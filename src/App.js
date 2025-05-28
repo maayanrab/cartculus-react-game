@@ -89,7 +89,7 @@ export default function App() {
         ))}
       </div>
       <div className="operators">
-        {["+", "-", "*", "/"].map((op) => (
+        {["+", "-", "×", "÷"].map((op) => (
           <button key={op} onClick={() => handleOperatorClick(op)}>{op}</button>
         ))}
       </div>

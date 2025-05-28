@@ -12,8 +12,8 @@ export const operate = (a, b, op) => {
   switch (op) {
     case '+': return a + b;
     case '-': return a - b;
-    case '*': return a * b;
-    case '/': return b !== 0 ? a / b : null;
+    case '×': return a * b;
+    case '÷': return b !== 0 ? a / b : null;
     default: return null;
   }
 };
