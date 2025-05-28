@@ -2,8 +2,8 @@ import React from 'react';
 
 export default function Card({ value, onClick, selected, isAbstract }) {
   const imagePath = isAbstract
-    ? './cartculus-react-game/images/cardabstract.png'
-    : `./cartculus-react-game/images/card${value}.png`;
+    ? './images/cardabstract.png'
+    : `./images/card${value}.png`;
 
   return (
     <div
