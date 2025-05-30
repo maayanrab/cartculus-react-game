@@ -28,7 +28,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (cards.length === 1 && cards[0].value === target) {
+    const visibleCards = cards.filter((c) => !c.hidden);
+    if (visibleCards.length === 1 && visibleCards[0].value === target) {
       confetti();
       setTimeout(() => startNewRound(), 2000);
     }
@@ -54,32 +55,26 @@ export default function App() {
     }
   };
 
-  const performOperation = ([aId, bId], operator) => {
-    const a = cards.find((c) => c.id === aId);
-    const b = cards.find((c) => c.id === bId);
+  const performOperation = ([firstId, secondId], operator) => {
+    const a = cards.find((c) => c.id === firstId);
+    const b = cards.find((c) => c.id === secondId);
     const result = operate(a.value, b.value, operator);
     if (result == null) return;
 
-    setHistory((prev) => [...prev, cards]);
+    setHistory((prev) => [...prev, [...cards]]);
 
     const newCard = {
-      id: Date.now(),
+      ...a,
       value: result,
       isAbstract: result < 1 || result > 13 || parseInt(result) !== result,
     };
 
-    const indexA = cards.findIndex((c) => c.id === aId);
-    const indexB = cards.findIndex((c) => c.id === bId);
+    const newCards = cards.map((card) => {
+      if (card.id === firstId) return newCard; // replace value
+      if (card.id === secondId) return { ...card, hidden: true }; // make invisible
+      return card;
+    });
 
-    // Copy current cards
-    let newCards = [...cards];
-
-    // Remove both cards
-    newCards = newCards.filter((c) => c.id !== aId && c.id !== bId);
-
-    // Insert the result where the *first selected* card was
-    const insertIndex = Math.min(indexA, indexB);
-    newCards.splice(insertIndex, 0, newCard);
     setCards(newCards);
     setSelected([]);
     setSelectedOperator(null);
@@ -104,17 +99,23 @@ export default function App() {
 
       <div className="container">
         <div className="row justify-content-center gx-3 gy-3">
-          {cards.map((card) => (
+          {cards.map((card, idx) => (
             <div
-              key={card.id}
+              key={originalCards[idx]?.id || idx}
               className="col-6 col-sm-auto d-flex justify-content-center"
             >
-              <Card
-                value={card.value}
-                selected={selected.includes(card.id)}
-                onClick={() => handleCardClick(card.id)}
-                isAbstract={card.isAbstract}
-              />
+              {!card.hidden ? (
+                <Card
+                  value={card.value}
+                  selected={selected.includes(card.id)}
+                  onClick={() => handleCardClick(card.id)}
+                  isAbstract={card.isAbstract}
+                />
+              ) : (
+                <div style={{ visibility: 'hidden' }}>
+                  <Card value={0} />
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -122,16 +123,14 @@ export default function App() {
 
       <div className="operators my-4 d-flex justify-content-center">
         {[
-          { op: "+", src: "./images/addition.png" },
-          { op: "-", src: "./images/subtraction.png" },
-          { op: "×", src: "./images/multiplication.png" },
-          { op: "÷", src: "./images/division.png" },
+          { op: '+', src: './images/addition.png' },
+          { op: '-', src: './images/subtraction.png' },
+          { op: '×', src: './images/multiplication.png' },
+          { op: '÷', src: './images/division.png' },
         ].map(({ op, src }) => (
           <button
             key={op}
-            className={`operator-button ${
-              selectedOperator === op ? "selected-operator" : ""
-            }`}
+            className={`operator-button ${selectedOperator === op ? 'selected-operator' : ''}`}
             onClick={() => handleOperatorSelect(op)}
           >
             <img src={src} alt={op} className="operator-img" />
