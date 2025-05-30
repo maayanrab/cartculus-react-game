@@ -112,10 +112,10 @@ export default function App() {
 
       <div className="operators my-4 d-flex justify-content-center">
         {[
-          { op: "+", src: "/images/addition.png" },
-          { op: "-", src: "/images/subtraction.png" },
-          { op: "×", src: "/images/multiplication.png" },
-          { op: "÷", src: "/images/division.png" },
+          { op: "+", src: "./images/addition.png" },
+          { op: "-", src: "./images/subtraction.png" },
+          { op: "×", src: "./images/multiplication.png" },
+          { op: "÷", src: "./images/division.png" },
         ].map(({ op, src }) => (
           <button
             key={op}
