@@ -68,8 +68,18 @@ export default function App() {
       isAbstract: result < 1 || result > 13 || parseInt(result) !== result,
     };
 
-    const newCards = cards.filter((c) => c.id !== aId && c.id !== bId);
-    newCards.push(newCard);
+    const indexA = cards.findIndex((c) => c.id === aId);
+    const indexB = cards.findIndex((c) => c.id === bId);
+
+    // Copy current cards
+    let newCards = [...cards];
+
+    // Remove both cards
+    newCards = newCards.filter((c) => c.id !== aId && c.id !== bId);
+
+    // Insert the result where the *first selected* card was
+    const insertIndex = Math.min(indexA, indexB);
+    newCards.splice(insertIndex, 0, newCard);
     setCards(newCards);
     setSelected([]);
     setSelectedOperator(null);
