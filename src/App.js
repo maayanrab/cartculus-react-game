@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Card from './components/Card';
-import { generateCards, generateTarget, operate } from './gameLogic';
+import { generateCardsAndTarget, operate } from './gameLogic';
 import confetti from 'canvas-confetti';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './styles.css';
@@ -13,8 +13,7 @@ export default function App() {
   const [history, setHistory] = useState([]);
 
   const startNewRound = () => {
-    const newCards = generateCards();
-    const newTarget = generateTarget();
+    const { cards: newCards, target: newTarget } = generateCardsAndTarget();
     setCards(newCards);
     setOriginalCards(newCards);
     setTarget(newTarget);
