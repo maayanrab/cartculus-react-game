@@ -61,3 +61,49 @@ button {
   font-size: 18px;
   cursor: pointer;
 }
+
+/* .operator-img {
+  width: 60px;
+  height: 60px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  margin: 0 10px;
+}
+
+.operator-img:hover {
+  transform: scale(1.1);
+}
+
+.selected-operator {
+  box-shadow: 0 0 10px 3px #00f5ff;
+  border-radius: 10px;
+} */
+
+.operator-button {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  padding: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+  margin: 0 10px;
+  background-color: transparent;
+  border: none;
+}
+
+.operator-button:hover {
+  transform: scale(1.1);
+}
+
+.operator-button.selected-operator {
+  box-shadow: 0 0 15px 5px #00f5ff;
+}
+
+.operator-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: contain;
+}
