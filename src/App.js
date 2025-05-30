@@ -12,6 +12,7 @@ export default function App() {
   const [selectedOperator, setSelectedOperator] = useState(null);
   const [originalCards, setOriginalCards] = useState([]);
   const [history, setHistory] = useState([]);
+  const [autoPlay, setAutoPlay] = useState(true); // 👈 Auto-play toggle
 
   const startNewRound = () => {
     const { cards: newCards, target: newTarget } = generateCardsAndTarget();
@@ -28,12 +29,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const visibleCards = cards.filter((c) => !c.hidden);
+    const visibleCards = cards.filter((card) => !card.invisible);
     if (visibleCards.length === 1 && visibleCards[0].value === target) {
       confetti();
-      setTimeout(() => startNewRound(), 2000);
+      if (autoPlay) {
+        setTimeout(() => startNewRound(), 2000);
+      }
     }
-  }, [cards]);
+  }, [cards, target, autoPlay]);
+
 
   const handleCardClick = (id) => {
     if (selected.includes(id)) {
@@ -55,24 +59,24 @@ export default function App() {
     }
   };
 
-  const performOperation = ([firstId, secondId], operator) => {
-    const a = cards.find((c) => c.id === firstId);
-    const b = cards.find((c) => c.id === secondId);
+  const performOperation = ([aId, bId], operator) => {
+    const a = cards.find((c) => c.id === aId);
+    const b = cards.find((c) => c.id === bId);
     const result = operate(a.value, b.value, operator);
     if (result == null) return;
 
-    setHistory((prev) => [...prev, [...cards]]);
+    setHistory((prev) => [...prev, cards]);
 
     const newCard = {
-      ...a,
+      id: Date.now(),
       value: result,
       isAbstract: result < 1 || result > 13 || parseInt(result) !== result,
     };
 
-    const newCards = cards.map((card) => {
-      if (card.id === firstId) return newCard; // replace value
-      if (card.id === secondId) return { ...card, hidden: true }; // make invisible
-      return card;
+    const newCards = cards.map((c) => {
+      if (c.id === aId) return newCard;
+      if (c.id === bId) return { ...c, invisible: true };
+      return c;
     });
 
     setCards(newCards);
@@ -90,7 +94,23 @@ export default function App() {
   };
 
   return (
-    <div className="container text-center">
+    <div className="container text-center position-relative">
+      {/* Toggle top right */}
+      <div className="position-absolute top-0 end-0 m-3">
+        <div className="form-check form-switch">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            id="autoPlayToggle"
+            checked={autoPlay}
+            onChange={() => setAutoPlay(!autoPlay)}
+          />
+          <label className="form-check-label" htmlFor="autoPlayToggle">
+            Auto-play
+          </label>
+        </div>
+      </div>
+
       <h1>CartCulus</h1>
       <div className="target my-4">
         <p>Target:</p>
@@ -99,23 +119,20 @@ export default function App() {
 
       <div className="container">
         <div className="row justify-content-center gx-3 gy-3">
-          {cards.map((card, idx) => (
+          {cards.map((card) => (
             <div
-              key={originalCards[idx]?.id || idx}
+              key={card.id}
               className="col-6 col-sm-auto d-flex justify-content-center"
             >
-              {!card.hidden ? (
-                <Card
-                  value={card.value}
-                  selected={selected.includes(card.id)}
-                  onClick={() => handleCardClick(card.id)}
-                  isAbstract={card.isAbstract}
-                />
-              ) : (
-                <div style={{ visibility: 'hidden' }}>
-                  <Card value={0} />
-                </div>
-              )}
+              <Card
+                value={card.value}
+                selected={selected.includes(card.id)}
+                onClick={
+                  !card.invisible ? () => handleCardClick(card.id) : undefined
+                }
+                isAbstract={card.isAbstract}
+                invisible={card.invisible}
+              />
             </div>
           ))}
         </div>
@@ -123,14 +140,16 @@ export default function App() {
 
       <div className="operators my-4 d-flex justify-content-center">
         {[
-          { op: '+', src: './images/addition.png' },
-          { op: '-', src: './images/subtraction.png' },
-          { op: '×', src: './images/multiplication.png' },
-          { op: '÷', src: './images/division.png' },
+          { op: "+", src: "./images/addition.png" },
+          { op: "-", src: "./images/subtraction.png" },
+          { op: "×", src: "./images/multiplication.png" },
+          { op: "÷", src: "./images/division.png" },
         ].map(({ op, src }) => (
           <button
             key={op}
-            className={`operator-button ${selectedOperator === op ? 'selected-operator' : ''}`}
+            className={`operator-button ${
+              selectedOperator === op ? 'selected-operator' : ''
+            }`}
             onClick={() => handleOperatorSelect(op)}
           >
             <img src={src} alt={op} className="operator-img" />
