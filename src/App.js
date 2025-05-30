@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Card from './components/Card';
 import { generateCards, generateTarget, operate } from './gameLogic';
 import confetti from 'canvas-confetti';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import './styles.css';
 
 export default function App() {
   const [cards, setCards] = useState([]);
@@ -47,8 +49,7 @@ export default function App() {
     const result = operate(a.value, b.value, operator);
     if (result == null) return;
 
-    // Save current state to history before modifying
-    setHistory(prev => [...prev, cards]);
+    setHistory((prev) => [...prev, cards]);
 
     const newCard = {
       id: Date.now(),
@@ -71,32 +72,43 @@ export default function App() {
   };
 
   return (
-    <div className="container">
+    <div className="container text-center">
       <h1>CartCulus</h1>
-      <div className="target">
+      <div className="target my-4">
         <p>Target:</p>
-        <Card value={target} isAbstract={target < 1 || target > 13} class="target" />
+        <Card
+          value={target}
+          isAbstract={target < 1 || target > 13}
+        />
       </div>
-      <div className="cards">
-        {cards.map((card) => (
-          <Card
-            key={card.id}
-            value={card.value}
-            selected={selected.includes(card.id)}
-            onClick={() => handleCardClick(card.id)}
-            isAbstract={card.isAbstract}
-          />
+
+      <div className="container">
+        <div className="row justify-content-center gx-3 gy-3">
+          {cards.map((card) => (
+            <div key={card.id} className="col-6 col-sm-auto d-flex justify-content-center">
+              <Card
+                value={card.value}
+                selected={selected.includes(card.id)}
+                onClick={() => handleCardClick(card.id)}
+                isAbstract={card.isAbstract}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="operators my-4">
+        {['+', '-', '×', '÷'].map((op) => (
+          <button key={op} onClick={() => handleOperatorClick(op)}>
+            {op}
+          </button>
         ))}
       </div>
-      <div className="operators">
-        {["+", "-", "×", "÷"].map((op) => (
-          <button key={op} onClick={() => handleOperatorClick(op)}>{op}</button>
-        ))}
-      </div>
+
       <div className="controls">
+        <button onClick={handleUndo}>Undo</button>
         <button onClick={() => setCards(originalCards)}>Reset</button>
         <button onClick={startNewRound}>Reshuffle</button>
-        <button onClick={handleUndo}>Undo</button>
       </div>
     </div>
   );

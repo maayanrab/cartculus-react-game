@@ -11,26 +11,33 @@ body {
   margin: auto;
 }
 
-.cards, .operators, .controls {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin: 20px 0;
-}
-
 .card {
   margin: 10px;
   position: relative;
   cursor: pointer;
   transition: transform 0.2s ease;
+  display: inline-block;
+  text-align: center;
 }
 
 .card img {
   height: 120px;
 }
 
+.target {
+  margin: 20px 0;
+}
+
+.target .card {
+  display: inline-block;
+}
+
 .target img {
-  height: 180px;
+  height: 180px !important;
+  width: auto !important;
+  max-width: 100%;
+  display: block;
+  margin: auto;
 }
 
 .card.selected {
@@ -53,8 +60,4 @@ button {
   padding: 10px 20px;
   font-size: 18px;
   cursor: pointer;
-}
-
-.target {
-  margin: 20px 0;
 }

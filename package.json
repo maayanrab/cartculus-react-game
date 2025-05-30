@@ -1,5 +1,5 @@
 {
-  "homepage": "https://maayanrab.github.io/cartculus-react-game/",
+  "_homepage": "https://maayanrab.github.io/cartculus-react-game/",
   "name": "cartculus-react-game",
   "version": "1.0.0",
   "description": "A mathematical card game using React",
@@ -11,6 +11,7 @@
     "deploy": "gh-pages -d build"
   },
   "dependencies": {
+    "bootstrap": "^5.3.6",
     "canvas-confetti": "^1.6.0",
     "gh-pages": "^6.3.0",
     "react": "^18.0.0",
