@@ -5,7 +5,7 @@ import confetti from 'canvas-confetti';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './styles.css';
 
-// Declare Audio objects globally. They will be initialized after first user interaction.
+// Declare Audio objects globally. They will be initialized and preloaded after first user interaction.
 let undoSound;
 let operatorSound;
 let successSound;
@@ -20,18 +20,25 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [autoReshuffle, setAutoReshuffle] = useState(true);
   const [userInteracted, setUserInteracted] = useState(false); // State to track user interaction
-  // Changed state name to `soundsOn` and default to true (sounds enabled)
-  const [soundsOn, setSoundsOn] = useState(true);
+  const [soundsOn, setSoundsOn] = useState(true); // Sounds are on by default
 
   // Effect to initialize Audio objects and set userInteracted flag
   useEffect(() => {
     const handleInitialInteraction = () => {
       if (!userInteracted) {
-        // Initialize Audio objects only after the first user interaction
+        // Initialize Audio objects
         undoSound = new Audio('./sounds/undo.wav');
         operatorSound = new Audio('./sounds/operator.wav');
         successSound = new Audio('./sounds/success.wav');
         reshuffleSound = new Audio('./sounds/reshuffle.wav');
+
+        // Explicitly load the audio files to reduce playback delay
+        // This tells the browser to start fetching the audio data
+        undoSound.load();
+        operatorSound.load();
+        successSound.load();
+        reshuffleSound.load();
+
         setUserInteracted(true);
         // Remove listeners once interaction has occurred
         document.removeEventListener('click', handleInitialInteraction);
@@ -48,11 +55,11 @@ export default function App() {
       document.removeEventListener('click', handleInitialInteraction);
       document.removeEventListener('keydown', handleInitialInteraction);
     };
-  }, [userInteracted]);
+  }, [userInteracted]); // This effect runs once when userInteracted changes to true
 
   // Helper function to play sounds, respecting the userInteracted AND soundsOn flags
   const playSound = (audio) => {
-    if (userInteracted && audio && soundsOn) { // Condition changed from !isMuted to soundsOn
+    if (userInteracted && audio && soundsOn) {
       audio.currentTime = 0; // Reset sound to beginning to play immediately
       audio.play().catch(e => console.error("Error playing sound:", e));
     }
@@ -60,6 +67,9 @@ export default function App() {
 
   // Function to start a new round, with an optional flag to play reshuffle sound
   const startNewRound = (playReshuffleSound = true) => {
+    if (playReshuffleSound) {
+      playSound(reshuffleSound); // Play sound first
+    }
     const { cards: newCards, target: newTarget } = generateCardsAndTarget();
     setCards(newCards);
     setOriginalCards(newCards);
@@ -67,9 +77,6 @@ export default function App() {
     setSelected([]);
     setSelectedOperator(null);
     setHistory([]);
-    if (playReshuffleSound) {
-      playSound(reshuffleSound);
-    }
   };
 
   // Effect for initial game setup on component mount (runs only once)
@@ -89,7 +96,7 @@ export default function App() {
         setTimeout(() => startNewRound(true), 2000);
       }
     }
-  }, [cards, target, autoReshuffle, userInteracted, soundsOn]); // Changed isMuted to soundsOn
+  }, [cards, target, autoReshuffle, userInteracted, soundsOn]);
 
   const handleCardClick = (id) => {
     if (selected.includes(id)) {
@@ -177,11 +184,11 @@ export default function App() {
           <input
             className="form-check-input"
             type="checkbox"
-            id="soundsToggle" // Changed ID
-            checked={soundsOn} // Bound to soundsOn state
-            onChange={() => setSoundsOn(!soundsOn)} // Toggles soundsOn
+            id="soundsToggle"
+            checked={soundsOn}
+            onChange={() => setSoundsOn(!soundsOn)}
           />
-          <label className="form-check-label" htmlFor="soundsToggle"> {/* Changed htmlFor and label text */}
+          <label className="form-check-label" htmlFor="soundsToggle">
             Sounds
           </label>
         </div>
