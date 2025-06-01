@@ -22,28 +22,45 @@ body {
     justify-content: space-between;
 }
 
-#top, #target-card, #hand-cards, #operators, #controls {
+/* Remove padding from individual sections for a cleaner flex distribution */
+#target-card, #hand-cards, #operators, #controls {
     flex-shrink: 0;
-    padding: 10px 0;
+    padding: 10px 0; /* Keep some internal vertical padding */
 }
 
+/* --- Adjusted #top styles --- */
 #top {
-    position: relative;
-    padding-top: 20px;
+    position: relative; /* Essential for positioning children absolutely */
+    display: flex; /* Use flexbox to arrange content horizontally */
+    flex-direction: column; /* Stack headings and align them */
+    align-items: flex-start; /* Align text to the start (left) */
+    padding: 0; /* Remove padding from #top itself */
+    min-height: 80px; /* Give it a minimum height to contain the toggle */
+    justify-content: center; /* Vertically center content if there's extra space */
 }
 
 #top h1 {
     font-size: 3rem;
-    margin-bottom: 0;
+    margin: 0; /* Remove default margins to prevent pushing */
+    text-align: left; /* Ensure text alignment for small screens */
+    width: 100%; /* Take full width to center effectively */
 }
 
 #top h5 {
     font-size: 1.5rem;
-    margin-top: 0;
+    margin: 0; /* Remove default margins to prevent pushing */
+    text-align: left; /* Ensure text alignment for small screens */
+    width: 100%; /* Take full width to center effectively */
 }
 
+/* Auto-reshuffle toggle position */
 .position-absolute.top-0.end-0.m-2 {
+    position: absolute; /* Already set in App.js, but good to reinforce */
+    top: 10px; /* Adjust distance from top */
+    right: 10px; /* Adjust distance from right */
+    margin: 0; /* Remove default margins */
     font-size: 1rem;
+    z-index: 100; /* Ensure it's on top of other content */
 }
 
 /* --- Playing Card Styles --- */
@@ -89,7 +106,6 @@ body {
 }
 
 .target img {
-    /* Calculate target card height based on base card height */
     height: calc(var(--card-base-height) * 1.5) !important;
     width: auto;
     display: block;
@@ -182,15 +198,25 @@ button {
         padding: 5px;
     }
 
-    #top h1 {
-        font-size: 8vw;
+    /* Adjust #top for mobile to avoid clash */
+    #top {
+        min-height: 60px; /* Reduce min-height for mobile */
+        padding-top: 0; /* Remove top padding */
+        align-items: center; /* Center text on mobile */
     }
 
+    #top h1, #top h5 {
+        text-align: center; /* Center text on mobile */
+        margin: 0; /* Remove margins */
+        font-size: 8vw; /* Scale header on very small screens */
+    }
     #top h5 {
-        font-size: 4vw;
+        font-size: 4vw; /* Scale sub-header on very small screens */
     }
 
     .position-absolute.top-0.end-0.m-2 {
+        top: 5px; /* Fine-tune position on mobile */
+        right: 5px; /* Fine-tune position on mobile */
         font-size: 3vw;
     }
 
@@ -199,9 +225,9 @@ button {
     }
 
     .card img {
-        --card-base-height: 24vw; /* Scale base card height for mobile */
+        --card-base-height: 18vw;
         height: var(--card-base-height);
-        max-height: 120px; /* Maintain max height even when scaled by vw */
+        max-height: 120px;
     }
 
     .target {
@@ -209,8 +235,8 @@ button {
     }
 
     .target img {
-        height: calc(var(--card-base-height) * 1.5) !important; /* Target scales based on new mobile base height */
-        max-height: 180px !important; /* Maintain max height */
+        height: calc(var(--card-base-height) * 1.5) !important;
+        max-height: 180px !important;
     }
 
     .card-label {
@@ -226,7 +252,7 @@ button {
     .operator-button {
         width: 15vw;
         height: 15vw;
-        /* margin: 0 1vw; */
+        margin: 0 1vw;
     }
 
     .operator-img {
@@ -243,14 +269,5 @@ button {
     .col-6.col-sm-auto {
         max-width: 50%;
         flex: 0 0 50%;
-    }
-}
-
-@media (max-width: 450px) {
-    #top {
-        padding-top: 50px;
-    }
-    .position-absolute.top-0.end-0.m-2 {
-        top: 0;
     }
 }
