@@ -96,76 +96,85 @@ export default function App() {
   return (
     <div className="container text-center position-relative">
       {/* Toggle top right */}
-      <div className="position-absolute top-0 end-0 m-2">
-        <div className="form-check form-switch">
-          <input
-            className="form-check-input"
-            type="checkbox"
-            id="autoReshuffleToggle"
-            checked={autoReshuffle}
-            onChange={() => setAutoReshuffle(!autoReshuffle)}
-          />
-          <label className="form-check-label" htmlFor="autoReshuffleToggle">
-            Auto-reshuffle
-          </label>
+      <div id="top">
+        <div className="position-absolute top-0 end-0 m-2">
+          <div className="form-check form-switch">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              id="autoReshuffleToggle"
+              checked={autoReshuffle}
+              onChange={() => setAutoReshuffle(!autoReshuffle)}
+            />
+            <label className="form-check-label" htmlFor="autoReshuffleToggle">
+              Auto-reshuffle
+            </label>
+          </div>
         </div>
-      </div>
 
-      <h1 className="text-start text-sm-center">CartCulus
-        <h5 className="text-start text-sm-center">Practice Mode</h5>
-        </h1>
+        <h1 className="text-start text-md-center mb-0">CartCulus</h1>
+        <h5 className="text-start text-md-center mt-0">Practice Mode</h5>
+      </div>
       
-      <div className="target my-4">
-        <div class="target-border-bs">
-          <span class="target-text-bs">TARGET</span>
-            <Card value={target} isAbstract={target < 1 || target > 13} />
+      <div id="target-card">
+        <div className="target my-4">
+          <div class="target-border-bs">
+            <span class="target-text-bs">TARGET</span>
+              <Card value={target} isAbstract={target < 1 || target > 13} />
+          </div>
         </div>
       </div>
 
-      <div className="container">
-        <div className="row justify-content-center gx-3 gy-3">
-          {cards.map((card) => (
-            <div
-              key={card.id}
-              className="col-6 col-sm-auto d-flex justify-content-center"
+      <div id="hand-cards">
+        <div className="container">
+          <div className="row justify-content-center gx-3 gy-3">
+            {cards.map((card) => (
+              <div
+                key={card.id}
+                className="col-6 col-sm-auto d-flex justify-content-center"
+              >
+                <Card
+                  value={card.value}
+                  selected={selected.includes(card.id)}
+                  onClick={
+                    !card.invisible ? () => handleCardClick(card.id) : undefined
+                  }
+                  isAbstract={card.isAbstract}
+                  invisible={card.invisible}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div id="operators">
+        <div className="operators my-4 d-flex justify-content-center">
+          {[
+            { op: "+", src: "./images/addition.png" },
+            { op: "-", src: "./images/subtraction.png" },
+            { op: "×", src: "./images/multiplication.png" },
+            { op: "÷", src: "./images/division.png" },
+          ].map(({ op, src }) => (
+            <button
+              key={op}
+              className={`operator-button ${
+                selectedOperator === op ? 'selected-operator' : ''
+              }`}
+              onClick={() => handleOperatorSelect(op)}
             >
-              <Card
-                value={card.value}
-                selected={selected.includes(card.id)}
-                onClick={
-                  !card.invisible ? () => handleCardClick(card.id) : undefined
-                }
-                isAbstract={card.isAbstract}
-                invisible={card.invisible}
-              />
-            </div>
+              <img src={src} alt={op} className="operator-img" />
+            </button>
           ))}
         </div>
       </div>
 
-      <div className="operators my-4 d-flex justify-content-center">
-        {[
-          { op: "+", src: "./images/addition.png" },
-          { op: "-", src: "./images/subtraction.png" },
-          { op: "×", src: "./images/multiplication.png" },
-          { op: "÷", src: "./images/division.png" },
-        ].map(({ op, src }) => (
-          <button
-            key={op}
-            className={`operator-button ${
-              selectedOperator === op ? 'selected-operator' : ''
-            }`}
-            onClick={() => handleOperatorSelect(op)}
-          >
-            <img src={src} alt={op} className="operator-img" />
-          </button>
-        ))}
-      </div>
-
-      <div className="controls">
-        <button onClick={handleUndo}>Undo</button>
-        <button onClick={() => setCards(originalCards)}>Reset</button>
-        <button onClick={startNewRound}>Reshuffle</button>
+      <div id="controls">
+        <div className="controls">
+          <button onClick={handleUndo}>Undo</button>
+          <button onClick={() => setCards(originalCards)}>Reset</button>
+          <button onClick={startNewRound}>Reshuffle</button>
+        </div>
       </div>
     </div>
   );
