@@ -111,7 +111,10 @@ export default function App() {
         </div>
       </div>
 
-      <h1>CartCulus</h1>
+      <h1 className="text-start text-sm-center">CartCulus
+        <h5 className="text-start text-sm-center">Practice Mode</h5>
+        </h1>
+      
       <div className="target my-4">
         <div class="target-border-bs">
           <span class="target-text-bs">TARGET</span>

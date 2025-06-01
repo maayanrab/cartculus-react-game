@@ -34,7 +34,6 @@ body {
 
 .target img {
   height: 180px !important;
-  width: auto !important;
   width: 100%;
   display: block;
   margin: auto;
@@ -127,3 +126,9 @@ button {
   min-height: 100px;
   /* Minimum height for the card itself */
 }
+
+/* @media (max-width: 576px) {
+  .form-check.form-switch {
+    margin-top: 1rem;
+  }
+} */
