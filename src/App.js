@@ -20,6 +20,8 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [autoReshuffle, setAutoReshuffle] = useState(true);
   const [userInteracted, setUserInteracted] = useState(false); // State to track user interaction
+  // Changed state name to `soundsOn` and default to true (sounds enabled)
+  const [soundsOn, setSoundsOn] = useState(true);
 
   // Effect to initialize Audio objects and set userInteracted flag
   useEffect(() => {
@@ -46,11 +48,11 @@ export default function App() {
       document.removeEventListener('click', handleInitialInteraction);
       document.removeEventListener('keydown', handleInitialInteraction);
     };
-  }, [userInteracted]); // This effect runs once when userInteracted changes to true
+  }, [userInteracted]);
 
-  // Helper function to play sounds, respecting the userInteracted flag
+  // Helper function to play sounds, respecting the userInteracted AND soundsOn flags
   const playSound = (audio) => {
-    if (userInteracted && audio) {
+    if (userInteracted && audio && soundsOn) { // Condition changed from !isMuted to soundsOn
       audio.currentTime = 0; // Reset sound to beginning to play immediately
       audio.play().catch(e => console.error("Error playing sound:", e));
     }
@@ -87,7 +89,7 @@ export default function App() {
         setTimeout(() => startNewRound(true), 2000);
       }
     }
-  }, [cards, target, autoReshuffle, userInteracted]); // userInteracted needed for playSound
+  }, [cards, target, autoReshuffle, userInteracted, soundsOn]); // Changed isMuted to soundsOn
 
   const handleCardClick = (id) => {
     if (selected.includes(id)) {
@@ -168,6 +170,19 @@ export default function App() {
           />
           <label className="form-check-label" htmlFor="autoReshuffleToggle">
             Auto-reshuffle
+          </label>
+        </div>
+        {/* Sounds Toggle */}
+        <div className="form-check form-switch mt-2">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            id="soundsToggle" // Changed ID
+            checked={soundsOn} // Bound to soundsOn state
+            onChange={() => setSoundsOn(!soundsOn)} // Toggles soundsOn
+          />
+          <label className="form-check-label" htmlFor="soundsToggle"> {/* Changed htmlFor and label text */}
+            Sounds
           </label>
         </div>
       </div>
