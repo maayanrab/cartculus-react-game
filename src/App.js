@@ -93,6 +93,13 @@ export default function App() {
     setSelectedOperator(null);
   };
 
+  const handleReset = () => {
+    setCards(originalCards);
+    setHistory([]); // Clear history so Undo doesn't go beyond the reset state
+    setSelected([]);
+    setSelectedOperator(null);
+  };
+
   return (
     <div className="container text-center position-relative">
       {/* Toggle top right */}
@@ -164,7 +171,8 @@ export default function App() {
 
       <div className="controls">
         <button onClick={handleUndo}>Undo</button>
-        <button onClick={() => setCards(originalCards)}>Reset</button>
+        {/* Modified Reset button handler */}
+        <button onClick={handleReset}>Reset</button>
         <button onClick={startNewRound}>Reshuffle</button>
       </div>
     </div>
