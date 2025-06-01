@@ -35,7 +35,7 @@ body {
 .target img {
   height: 180px !important;
   width: auto !important;
-  max-width: 100%;
+  width: 100%;
   display: block;
   margin: auto;
 }
@@ -61,23 +61,6 @@ button {
   font-size: 18px;
   cursor: pointer;
 }
-
-/* .operator-img {
-  width: 60px;
-  height: 60px;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-  margin: 0 10px;
-}
-
-.operator-img:hover {
-  transform: scale(1.1);
-}
-
-.selected-operator {
-  box-shadow: 0 0 10px 3px #00f5ff;
-  border-radius: 10px;
-} */
 
 .operator-button {
   width: 70px;
@@ -106,4 +89,41 @@ button {
   height: 100%;
   border-radius: 50%;
   object-fit: contain;
+}
+
+.target-border-bs {
+  position: relative;
+  display: inline-block;
+  border: 2px solid #0d6efd;
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+  max-width: fit-content;
+}
+
+.target-text-bs {
+  position: absolute;
+  top: -0.75rem;
+  /* Adjust to position above the border line */
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #f0f8ff;
+  /* Background to "cut" the line */
+  padding: 0 0.5rem;
+  /* Padding around the text */
+  color: #0d6efd;
+  /* Bootstrap primary blue text color */
+  font-weight: bold;
+  font-size: 0.875rem;
+  /* Equivalent to text-sm */
+  z-index: 10;
+  /* Ensure text is above the border */
+}
+
+/* Ensure the card content is centered within the border */
+.card-content-wrapper-bs {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100px;
+  /* Minimum height for the card itself */
 }

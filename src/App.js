@@ -12,7 +12,7 @@ export default function App() {
   const [selectedOperator, setSelectedOperator] = useState(null);
   const [originalCards, setOriginalCards] = useState([]);
   const [history, setHistory] = useState([]);
-  const [autoPlay, setAutoPlay] = useState(true); // 👈 Auto-play toggle
+  const [autoReshuffle, setAutoReshuffle] = useState(true); // 👈 Auto-reshuffle toggle
 
   const startNewRound = () => {
     const { cards: newCards, target: newTarget } = generateCardsAndTarget();
@@ -32,11 +32,11 @@ export default function App() {
     const visibleCards = cards.filter((card) => !card.invisible);
     if (visibleCards.length === 1 && visibleCards[0].value === target) {
       confetti();
-      if (autoPlay) {
+      if (autoReshuffle) {
         setTimeout(() => startNewRound(), 2000);
       }
     }
-  }, [cards, target, autoPlay]);
+  }, [cards, target, autoReshuffle]);
 
 
   const handleCardClick = (id) => {
@@ -96,25 +96,27 @@ export default function App() {
   return (
     <div className="container text-center position-relative">
       {/* Toggle top right */}
-      <div className="position-absolute top-0 end-0 m-3">
+      <div className="position-absolute top-0 end-0 m-2">
         <div className="form-check form-switch">
           <input
             className="form-check-input"
             type="checkbox"
-            id="autoPlayToggle"
-            checked={autoPlay}
-            onChange={() => setAutoPlay(!autoPlay)}
+            id="autoReshuffleToggle"
+            checked={autoReshuffle}
+            onChange={() => setAutoReshuffle(!autoReshuffle)}
           />
-          <label className="form-check-label" htmlFor="autoPlayToggle">
-            Auto-play
+          <label className="form-check-label" htmlFor="autoReshuffleToggle">
+            Auto-reshuffle
           </label>
         </div>
       </div>
 
       <h1>CartCulus</h1>
       <div className="target my-4">
-        <p>Target:</p>
-        <Card value={target} isAbstract={target < 1 || target > 13} />
+        <div class="target-border-bs">
+          <span class="target-text-bs">TARGET</span>
+            <Card value={target} isAbstract={target < 1 || target > 13} />
+        </div>
       </div>
 
       <div className="container">
