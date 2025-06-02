@@ -88,6 +88,8 @@ export default function App() {
     setHandCardsFlipped(false); // Ensure new hand cards start unflipped (showing back)
     setTargetCardFlipped(false); // Ensure target card starts unflipped (showing back for the animation)
 
+    document.body.classList.add('scrolling-disabled');
+
     // --- Cards Exit Animation ---
     // Calculate positions for exiting cards
     const cardPositions = new Map();
@@ -170,6 +172,9 @@ export default function App() {
     // Reset animation states
     setIsReshuffling(false);
     setNewCardsAnimatingIn(false);
+
+    document.body.classList.remove('scrolling-disabled');
+
   };
 
   // Helper to calculate dynamic exit translation for cards

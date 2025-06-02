@@ -7,6 +7,10 @@ body {
   overflow-x: hidden; /* Prevent horizontal scroll during animations */
 }
 
+body.scrolling-disabled {
+  overflow: hidden;
+}
+
 .container {
   max-width: 800px;
   margin: auto;
