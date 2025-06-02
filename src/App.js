@@ -11,6 +11,7 @@ let operatorSound;
 let successSound;
 let reshuffleSound;
 let targetRevealSound;
+let discardHandSound;
 
 export default function App() {
   const [cards, setCards] = useState([]);
@@ -45,13 +46,15 @@ export default function App() {
         successSound = new Audio('./sounds/success.wav');
         reshuffleSound = new Audio('./sounds/reshuffle.wav');
         targetRevealSound = new Audio('./sounds/target_reveal.wav');
+        discardHandSound = new Audio('./sounds/discard_hand.wav');
 
         // Explicitly load the audio files to reduce playback delay
         undoSound.load();
         operatorSound.load();
         successSound.load();
         reshuffleSound.load();
-        targetRevealSound.load()
+        targetRevealSound.load();
+        discardHandSound.load();
 
         setUserInteracted(true);
         document.removeEventListener('click', handleInitialInteraction);
@@ -79,11 +82,11 @@ export default function App() {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // Function to start a new round, with an optional flag to play reshuffle sound
-  const startNewRound = async (playReshuffleSound = true) => {
+  const startNewRound = async (playdiscardHandSound = true) => {
     if (isReshuffling) return; // Prevent double-triggering
 
-    if (playReshuffleSound) {
-      playSound(reshuffleSound);
+    if (playdiscardHandSound) {
+      playSound(discardHandSound);
     }
 
     setIsReshuffling(true); // Signal that reshuffle animation is starting
@@ -151,6 +154,8 @@ export default function App() {
     // This removes the 'initial-offscreen-hidden' class and adds 'card-animating-in'.
     // The CSS transition then takes over.
     setNewCardsAnimatingIn(true);
+    await sleep(400); // Wait for cards to flyin
+    playSound(reshuffleSound);
 
     // Wait for all new cards to be in their final positions
     await sleep(800 + (newGeneratedCards.length - 1) * 50); // Adjust based on animation duration + max stagger delay
@@ -168,6 +173,7 @@ export default function App() {
     // After all flips, update the main 'cards' state for normal game flow
     // They should now be isFlipped: false for normal play (showing front).
     setCards(newGeneratedCards.map(card => ({ ...card, isFlipped: false })));
+    playSound(targetRevealSound);
     setOriginalCards(newGeneratedCards); // Save for reset
     setSelected([]);
     setSelectedOperator(null);
