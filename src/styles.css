@@ -197,6 +197,8 @@ button {
 /* Apply animation to the wrapper col-6 div */
 .reshuffle-card-container.card-animating-out {
   animation: container-fly-out 0.7s forwards;
+  /* Add hardware acceleration hint */
+  will-change: transform, opacity;
 }
 
 /* This keyframe moves the entire Bootstrap column/container */
@@ -211,9 +213,28 @@ button {
   }
 }
 
+/* --- NEW / MODIFIED: Initial state for incoming cards before animation starts --- */
+/* Add this class to your new card containers in JavaScript *before* appending them to the DOM
+   and *before* adding 'card-animating-in'. */
+.reshuffle-card-container.initial-offscreen-hidden {
+  opacity: 0;
+  transform: translate(var(--card-enter-x, 0px), var(--card-enter-y, 150vh));
+  visibility: hidden; /* Hide immediately until animation starts */
+  /* Ensure the inner card is also in its starting (flipped) state without transition */
+  .card-inner {
+      transform: rotateY(180deg);
+      transition: none;
+  }
+}
+
+
 /* This keyframe moves the entire Bootstrap column/container for new cards */
 .reshuffle-card-container.card-animating-in {
   animation: container-fly-in 0.7s forwards;
+  /* Ensure visibility is set to visible once animation starts */
+  visibility: visible;
+  /* Add hardware acceleration hint */
+  will-change: transform, opacity;
 }
 
 @keyframes container-fly-in {

@@ -28,7 +28,7 @@ export default function App() {
   const [cardsToRender, setCardsToRender] = useState([]); // Cards to render during reshuffle
   const [handCardsFlipped, setHandCardsFlipped] = useState(false); // Controls the final flip of hand cards
   const [targetCardFlipped, setTargetCardFlipped] = useState(false); // Controls the target card flip
-  const [currentRoundTarget, setCurrentRoundTarget] = useState(null); // Holds target for current round display
+  const [currentRoundTarget, setCurrentRoundTarget] = useState(null); // Holds target for current round display for the target card
 
   // Refs to get card positions for dynamic animation paths
   const cardRefs = useRef({});
@@ -77,16 +77,19 @@ export default function App() {
 
   // Function to start a new round, with an optional flag to play reshuffle sound
   const startNewRound = async (playReshuffleSound = true) => {
+    if (isReshuffling) return; // Prevent double-triggering
+
     if (playReshuffleSound) {
       playSound(reshuffleSound);
     }
 
     setIsReshuffling(true); // Signal that reshuffle animation is starting
+    setNewCardsAnimatingIn(false); // Ensure this is false before exit animation
     setHandCardsFlipped(false); // Ensure new hand cards start unflipped (showing back)
     setTargetCardFlipped(false); // Ensure target card starts unflipped (showing back for the animation)
-    setNewCardsAnimatingIn(false); // Reset this state
 
     // --- Cards Exit Animation ---
+    // Calculate positions for exiting cards
     const cardPositions = new Map();
     cards.forEach(card => {
       const ref = cardRefs.current[card.id];
@@ -99,44 +102,53 @@ export default function App() {
       }
     });
 
-    // Render old cards with exit styles, set their target property to null for reshuffle animation
+    // Render old cards with exit styles. They remain visible during this phase.
+    // Ensure they are not marked as invisible from previous game logic.
     setCardsToRender(cards.map(card => ({
       ...card,
       dynamicOutStyle: getCardExitStyle(cardPositions.get(card.id), centerRef.current),
-      isTarget: false // Ensure old target doesn't act as target during exit
+      isTarget: false, // Ensure old target doesn't act as target during exit
+      invisible: false // Ensure they are visible for the animation
     })));
 
     await sleep(700); // Wait for cards to fly out
-    setCards([]); // This will remove the old cards from the DOM (cards state controls game logic visibility)
 
     // --- Generate New Cards and Prepare for Entry ---
     const { cards: newGeneratedCards, target: newTarget } = generateCardsAndTarget();
 
-    // Set the new target value immediately, but keep the target card flipped to its back initially
-    setTarget(newTarget); // Update the target state variable
-    setCurrentRoundTarget(newTarget); // Update currentRoundTarget for display
+    // Set the new target value immediately, but keep the target card visually flipped to its back initially
+    setTarget(newTarget); // Update the main target state
+    setCurrentRoundTarget(newTarget); // Update currentRoundTarget for display (the value that the target card shows)
 
-    // Prepare new cards for animation. They start with isFlipped: true (showing back) and dynamicInStyle
-    const initialNewCardsForAnimation = newGeneratedCards.map(card => ({
+    // Prepare new cards for animation. They start with isFlipped: true (showing back) and the 'initial-offscreen-hidden' class
+    const preparedNewCardsForAnimation = newGeneratedCards.map(card => ({
       ...card,
       isFlipped: true, // Initially flipped to show back
-      dynamicInStyle: getCardEntryStyle(cardRefs.current[card.id], centerRef.current) // Calculate initial off-screen position immediately
+      // The entry style is now handled by the 'initial-offscreen-hidden' class
+      // We don't need dynamicInStyle here, as the CSS class will apply the initial transform
     }));
 
-    // Render the new cards (initially off-screen, back side up)
-    setCardsToRender(initialNewCardsForAnimation);
+    // Reset cardRefs for incoming cards. This is important to ensure correct rect calculations later.
+    cardRefs.current = {};
 
-    // Wait for React to render the elements and for the browser to apply initial transforms
+    // First, set cardsToRender with the new cards and their initial off-screen state.
+    // This will cause React to render them, applying the 'initial-offscreen-hidden' class.
+    setCardsToRender(preparedNewCardsForAnimation);
+    setCards([]); // Clear game logic cards, they will be set at the end
+
+    // Wait for React to render the elements and for the browser to apply initial transforms (initial-offscreen-hidden styles)
+    // This `requestAnimationFrame` is CRUCIAL to prevent stuttering. It ensures the DOM is updated
+    // with the initial positions/opacity BEFORE we trigger the animation.
     await new Promise(resolve => requestAnimationFrame(() => resolve()));
-    await sleep(50); // Small additional delay for DOM layout to settle
+    // await sleep(50); // Removed: requestAnimationFrame should be sufficient
 
-    setNewCardsAnimatingIn(true); // Trigger new cards to animate in (from off-screen to final positions)
-
-    // No need to loop and set isFlipped: true again here, as it's already set on initialNewCardsForAnimation
-    // The staggered effect is now handled by CSS animation-delay on the container.
+    // Now, trigger the animation for new cards.
+    // This removes the 'initial-offscreen-hidden' class and adds 'card-animating-in'.
+    // The CSS transition then takes over.
+    setNewCardsAnimatingIn(true);
 
     // Wait for all new cards to be in their final positions
-    await sleep(800); // Sufficient time for card-fly-in animation to complete
+    await sleep(800 + (newGeneratedCards.length - 1) * 50); // Adjust based on animation duration + max stagger delay
 
     // --- Final Flips ---
     // Flip all hand cards at once
@@ -148,14 +160,16 @@ export default function App() {
     await sleep(600); // Wait for the target card to flip
 
     // After all flips, update the main 'cards' state for normal game flow
-    setCards(newGeneratedCards.map(card => ({ ...card, isFlipped: false }))); // Now they are not flipped
+    // They should now be isFlipped: false for normal play (showing front).
+    setCards(newGeneratedCards.map(card => ({ ...card, isFlipped: false })));
     setOriginalCards(newGeneratedCards); // Save for reset
     setSelected([]);
     setSelectedOperator(null);
     setHistory([]);
 
-    setIsReshuffling(false); // End reshuffle animation
-    setNewCardsAnimatingIn(false); // Reset
+    // Reset animation states
+    setIsReshuffling(false);
+    setNewCardsAnimatingIn(false);
   };
 
   // Helper to calculate dynamic exit translation for cards
@@ -176,29 +190,22 @@ export default function App() {
     };
   };
 
-  // Helper to calculate dynamic entry translation for cards
+  // Helper to calculate dynamic entry translation for cards (now primarily for the CSS class)
+  // This function is less critical now as the CSS class will handle the initial positioning.
+  // However, keeping it for `--card-enter-x` if you want a subtle horizontal alignment.
   const getCardEntryStyle = (targetCardElement, screenCenterElement) => {
+    // This function's role is diminished by 'initial-offscreen-hidden'
+    // It's still used to calculate the starting X position if needed for specific entry point.
     if (!targetCardElement || !screenCenterElement) return {};
 
     const targetRect = targetCardElement.getBoundingClientRect();
-    const targetX = targetRect.left + targetRect.width / 2;
-    const targetY = targetRect.top + targetRect.height / 2;
-
-    // Use current viewport width to simulate starting point from below screen
     const screenWidth = window.innerWidth;
-    // Calculate a rough "center" of the card row for consistent entry
     const rowCenter = screenWidth / 2;
-
-    // Horizontal offset to align the card's final resting position with its starting "lane" from below
     const entryDx = rowCenter - (targetRect.left + targetRect.width / 2);
 
-    // Start position vertically, well below the screen
-    const startY = window.innerHeight + targetRect.height;
-
     return {
-      // The horizontal entry point should be relative to the card's final horizontal position
-      '--card-enter-x': `${-targetRect.left + entryDx + (screenWidth / 2 - rowCenter)}px`, // This needs to be precisely calculated relative to the final position
-      '--card-enter-y': `${startY - targetY}px`,
+      '--card-enter-x': `${-targetRect.left + entryDx + (screenWidth / 2 - rowCenter)}px`,
+      // '--card-enter-y' will be set by the initial-offscreen-hidden class in CSS.
     };
   };
 
@@ -211,7 +218,7 @@ export default function App() {
   // Effect for winning condition and auto-reshuffle
   useEffect(() => {
     if (!isReshuffling && !newCardsAnimatingIn) { // Check when no animations are active
-      const visibleCards = cards.filter((card) => !card.invisible); // Keep invisible check for game logic if needed elsewhere
+      const visibleCards = cards.filter((card) => !card.invisible);
       if (visibleCards.length === 1 && visibleCards[0].value === target) {
         confetti();
         playSound(successSound);
@@ -350,11 +357,12 @@ export default function App() {
               className={`col-6 col-sm-auto d-flex justify-content-center reshuffle-card-container
                 ${isReshuffling && !newCardsAnimatingIn ? 'card-animating-out' : ''}
                 ${newCardsAnimatingIn ? 'card-animating-in' : ''}
+                ${(isReshuffling && card.isFlipped) || (newCardsAnimatingIn && card.isFlipped) ? 'initial-offscreen-hidden' : ''}
               `}
               style={{
                 ...card.dynamicOutStyle, // Apply dynamic exit style
-                ...card.dynamicInStyle,  // Apply dynamic entry style
-                // Stagger only when animating in (from below)
+                // Removed dynamicInStyle here, 'initial-offscreen-hidden' handles initial entry positioning
+                // but we keep it if you still want to calculate and pass `--card-enter-x` for horizontal adjustments
                 '--card-animation-delay': newCardsAnimatingIn ? `${index * 0.05}s` : '0s'
               }}
               ref={el => cardRefs.current[card.id] = el}
@@ -368,7 +376,8 @@ export default function App() {
                 isAbstract={card.isAbstract}
                 invisible={card.invisible} // Keep this if 'invisible' prop is used for cards removed from play
                 // Control isFlipped: during animation, use card's own isFlipped state. After, use handCardsFlipped.
-                isFlipped={isReshuffling || newCardsAnimatingIn ? card.isFlipped : !handCardsFlipped}
+                // The `initial-offscreen-hidden` class already implies `isFlipped: true` for initial state.
+                isFlipped={!isReshuffling && !newCardsAnimatingIn ? !handCardsFlipped : card.isFlipped}
               />
             </div>
           ))}
