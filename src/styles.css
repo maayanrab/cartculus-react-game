@@ -4,6 +4,7 @@ body {
   text-align: center;
   margin: 0;
   padding: 20px;
+  overflow-x: hidden; /* Prevent horizontal scroll during animations */
 }
 
 .container {
@@ -11,39 +12,66 @@ body {
   margin: auto;
 }
 
+/* Base Card Styling (for both hand and target, but target will override) */
 .card {
   margin: 10px;
-  position: relative;
-  cursor: pointer;
-  transition: transform 0.2s ease;
-  display: inline-block;
+  position: relative; /* Essential for positioning children images correctly */
+  display: inline-block; /* Helps with flow in grid */
   text-align: center;
+  width: 90px; /* Standard width for hand cards */
+  height: 120px; /* Standard height for hand cards */
+  perspective: 1000px; /* Provides 3D perspective for flip */
+  transition: transform 0.2s ease, box-shadow 0.2s ease; /* For selection animation */
+  /* Ensure the main card container doesn't overflow its content during animation */
+  overflow: hidden;
 }
 
-.card img {
-  height: 120px;
+/* Invisible state for cards (used for cards removed from play, not for animation entrance) */
+.invisible-card {
+  visibility: hidden;
+  /* Make sure it still occupies space so layout doesn't jump */
 }
 
-.target {
-  margin: 20px 0;
-}
-
-.target .card {
-  display: inline-block;
-}
-
-.target img {
-  height: 180px !important;
+/* --- Card Flip Mechanism (applies to all flippable cards) --- */
+.card-inner {
+  position: relative;
   width: 100%;
-  display: block;
-  margin: auto;
+  height: 100%;
+  transition: transform 0.6s; /* Smooth flip animation */
+  transform-style: preserve-3d; /* Crucial for 3D flip */
 }
 
-.card.selected {
-  transform: translateY(-10px);
-  box-shadow: 0 0 10px 3px #00f5ff;
+.card-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden; /* Hide the back of the element during flip */
+  display: flex; /* Use flexbox to center image within face */
+  justify-content: center;
+  align-items: center;
 }
 
+.card-face img {
+  max-width: 100%; /* Ensure image fits within its container */
+  max-height: 100%; /* Ensure image fits within its container */
+  object-fit: contain; /* Prevent stretching */
+  display: block; /* Remove extra space below img */
+}
+
+.card-front {
+  transform: rotateY(0deg);
+}
+
+.card-back {
+  transform: rotateY(180deg);
+}
+
+/* This rule applies when the card-inner has the 'is-flipped' class */
+.card-inner.is-flipped {
+  transform: rotateY(180deg);
+}
+
+/* Card Label (abstract card value) */
 .card-label {
   position: absolute;
   top: 50%;
@@ -52,6 +80,59 @@ body {
   font-weight: bold;
   font-size: 20px;
   color: black;
+  z-index: 2; /* Ensure label is above the card image */
+  backface-visibility: hidden; /* Hide label when front face is flipped away */
+}
+
+
+/* --- Target Card Specific Styling --- */
+.target {
+  margin: 20px 0;
+}
+
+/* The .target-card-wrapper class applied by Card.js when isTarget is true */
+.target .target-card-wrapper {
+  width: 135px; /* Bigger width for target card */
+  height: 180px; /* Bigger height for target card */
+  cursor: default; /* Ensure no pointer cursor */
+  box-shadow: none; /* Remove any selection shadow */
+  /* Remove any global .card or animation transforms/transitions that might apply to this wrapper */
+  transform: none; /* Ensure no unintended global transforms */
+  transition: none; /* Ensure no unintended global transitions */
+}
+
+/* Make sure the card-inner for the target card behaves like any other flippable card */
+.target .target-card-wrapper .card-inner {
+    transition: transform 0.6s; /* Allow smooth flip */
+    transform-style: preserve-3d; /* Crucial for 3D flip */
+}
+
+/* Ensure the card faces for the target card are properly set up for flipping */
+.target .target-card-wrapper .card-face {
+    position: absolute; /* Needed for flip */
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden; /* Standard for flipping */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transform: rotateY(0deg); /* Default for front face */
+}
+
+/* The back face of the target card */
+.target .target-card-wrapper .card-face.card-back {
+    transform: rotateY(180deg); /* Position back face correctly */
+}
+
+/* The actual flip for the target card */
+.target .target-card-wrapper .card-inner.is-flipped {
+    transform: rotateY(180deg); /* When is-flipped, show back */
+}
+
+
+.card.selected {
+  transform: translateY(-10px);
+  box-shadow: 0 0 10px 3px #00f5ff;
 }
 
 button {
@@ -102,33 +183,78 @@ button {
 .target-text-bs {
   position: absolute;
   top: -0.75rem;
-  /* Adjust to position above the border line */
   left: 50%;
   transform: translateX(-50%);
   background-color: #f0f8ff;
-  /* Background to "cut" the line */
   padding: 0 0.5rem;
-  /* Padding around the text */
   color: #0d6efd;
-  /* Bootstrap primary blue text color */
   font-weight: bold;
   font-size: 0.875rem;
-  /* Equivalent to text-sm */
   z-index: 10;
-  /* Ensure text is above the border */
 }
 
-/* Ensure the card content is centered within the border */
-.card-content-wrapper-bs {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100px;
-  /* Minimum height for the card itself */
+/* Reshuffle Animation */
+/* Apply animation to the wrapper col-6 div */
+.reshuffle-card-container.card-animating-out {
+  animation: container-fly-out 0.7s forwards;
 }
 
-/* @media (max-width: 576px) {
-  .form-check.form-switch {
-    margin-top: 1rem;
+/* This keyframe moves the entire Bootstrap column/container */
+@keyframes container-fly-out {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0); /* Start at current position */
   }
-} */
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--card-exit-x, 0px)), calc(var(--card-exit-y, 0px)));
+  }
+}
+
+/* This keyframe moves the entire Bootstrap column/container for new cards */
+.reshuffle-card-container.card-animating-in {
+  animation: container-fly-in 0.7s forwards;
+}
+
+@keyframes container-fly-in {
+  0% {
+    opacity: 0; /* Starts completely invisible */
+    /* Use the initial transform directly from the custom property */
+    transform: translate(var(--card-enter-x, 0px), var(--card-enter-y, 150vh));
+  }
+  1% {
+    /* Become visible very quickly, effectively starting animation as fully visible */
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0); /* End at target position */
+  }
+}
+
+/* Ensure the card-inner in the incoming container does NOT flip during transit */
+/* It should start flipped (back visible) and then flip after reaching position */
+.reshuffle-card-container.card-animating-in .card-inner {
+  transform: rotateY(180deg); /* Always show back during entry animation */
+  transition: none; /* No flip transition during movement */
+}
+
+/* This is the flip AFTER the new cards are in place */
+/* This rule applies when the .card-animating-in class is REMOVED */
+.reshuffle-card-container:not(.card-animating-in) .card-inner.is-flipped {
+  transform: rotateY(180deg); /* If isFlipped is true, stay on back */
+  transition: transform 0.6s; /* Allow flipping for the final flip */
+}
+
+/* This is the state where hand cards flip from back to front */
+/* This rule applies when .card-animating-in is REMOVED and .is-flipped is REMOVED (via !handCardsFlipped) */
+.reshuffle-card-container:not(.card-animating-in) .card-inner:not(.is-flipped) {
+  transform: rotateY(0deg); /* Flip to front */
+  transition: transform 0.6s; /* Enable flip transition */
+}
+
+
+/* For stagger effect during new cards animating in */
+.reshuffle-card-container.card-animating-in {
+    animation-delay: var(--card-animation-delay); /* Apply animation delay to the wrapper */
+}
