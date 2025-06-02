@@ -10,6 +10,7 @@ let undoSound;
 let operatorSound;
 let successSound;
 let reshuffleSound;
+let targetRevealSound;
 
 export default function App() {
   const [cards, setCards] = useState([]);
@@ -43,12 +44,14 @@ export default function App() {
         operatorSound = new Audio('./sounds/operator.wav');
         successSound = new Audio('./sounds/success.wav');
         reshuffleSound = new Audio('./sounds/reshuffle.wav');
+        targetRevealSound = new Audio('./sounds/target_reveal.wav');
 
         // Explicitly load the audio files to reduce playback delay
         undoSound.load();
         operatorSound.load();
         successSound.load();
         reshuffleSound.load();
+        targetRevealSound.load()
 
         setUserInteracted(true);
         document.removeEventListener('click', handleInitialInteraction);
@@ -159,6 +162,7 @@ export default function App() {
 
     // Flip the target card (which now holds the *new* target value)
     setTargetCardFlipped(true); // This will trigger the flip animation for the target card
+    playSound(targetRevealSound);
     await sleep(600); // Wait for the target card to flip
 
     // After all flips, update the main 'cards' state for normal game flow
