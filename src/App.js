@@ -72,6 +72,7 @@ export default function App() {
     if (playReshuffleSound) {
       playSound(reshuffleSound); // Play sound first
     }
+    // delay after sound
     await sleep(200);
     const { cards: newCards, target: newTarget } = generateCardsAndTarget();
     setCards(newCards);
@@ -248,11 +249,11 @@ export default function App() {
         ))}
       </div>
 
-      <div className="controls">
-        <button onClick={handleUndo}>Undo</button>
-        <button onClick={handleReset}>Reset</button>
+      <div className="controls d-flex justify-content-center gap-2"> {/* Added d-flex justify-content-center gap-2 */}
+        <button className="btn btn-info" onClick={handleUndo}>Undo</button> {/* Bootstrap classes added */}
+        <button className="btn btn-warning" onClick={handleReset}>Reset</button> {/* Bootstrap classes added */}
         {/* Pass true to indicate that this reshuffle should play the sound */}
-        <button onClick={() => startNewRound(true)}>Reshuffle</button>
+        <button className="btn btn-success" onClick={() => startNewRound(true)}>Reshuffle</button> {/* Bootstrap classes added */}
       </div>
     </div>
   );
