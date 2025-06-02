@@ -65,11 +65,14 @@ export default function App() {
     }
   };
 
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
   // Function to start a new round, with an optional flag to play reshuffle sound
-  const startNewRound = (playReshuffleSound = true) => {
+  const startNewRound = async (playReshuffleSound = true) => {
     if (playReshuffleSound) {
       playSound(reshuffleSound); // Play sound first
     }
+    await sleep(200);
     const { cards: newCards, target: newTarget } = generateCardsAndTarget();
     setCards(newCards);
     setOriginalCards(newCards);
