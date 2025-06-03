@@ -37,7 +37,7 @@ export default function App() {
   const [targetCardFlipped, setTargetCardFlipped] = useState(false); // Controls the target card flip
   const [currentRoundTarget, setCurrentRoundTarget] = useState(null); // Holds target for current round display for the target card
 
-  // Refs to get card positions for dynamic animation paths (less critical for "swipe down" but good to keep)
+  // Refs to get card positions for dynamic animation paths
   const cardRefs = useRef({});
   const centerRef = useRef(null); // Ref for the center of the screen
 
@@ -111,22 +111,32 @@ export default function App() {
     document.body.classList.add('scrolling-disabled');
 
     // --- Cards Exit Animation ---
-    // The `cards` state now includes placeholders. Only the visible ones will
-    // trigger the 'card-animating-out' class in JSX.
+    // Filter for actively visible cards for the exit animation
     const currentlyVisibleCards = cards.filter(card => !card.invisible && !card.isPlaceholder);
+    const cardPositions = new Map();
+    currentlyVisibleCards.forEach(card => {
+      const ref = cardRefs.current[card.id];
+      if (ref) {
+        const rect = ref.getBoundingClientRect();
+        cardPositions.set(card.id, {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2
+        });
+      }
+    });
 
-    // Set cardsToRender to current cards. The `card-animating-out` class will
-    // only apply to non-invisible cards. Invisible/placeholders will stay put.
+    // Prepare cards for rendering during the exit animation
+    // Only apply dynamicOutStyle to cards that are actually flying out
     setCardsToRender(cards.map(card => ({
       ...card,
-      // For the duration of the exit animation, ensure real cards are not 'invisible'
-      // if they are part of the exit animation. Placeholders remain invisible.
-      invisible: card.isPlaceholder ? true : card.invisible
+      dynamicOutStyle: (!card.invisible && !card.isPlaceholder) ? getCardExitStyle(cardPositions.get(card.id), centerRef.current) : {},
+      isTarget: false,
+      invisible: card.isPlaceholder ? true : card.invisible // Keep placeholders invisible
     })));
 
-    // Only wait for exit animation if there were visible cards to exit
+    // Only wait for exit animation if there were cards to exit
     if (currentlyVisibleCards.length > 0) {
-      await sleep(700);
+        await sleep(700);
     }
 
     // --- Generate New Cards and Prepare for Entry ---
@@ -158,13 +168,27 @@ export default function App() {
       }
     });
 
+    // BEFORE ANIMATION FIX:
+    // cardRefs.current = {}; // Clear refs for old cards
+    // setCardsToRender(preparedNewCardsForAnimation); // Set the new cards for rendering
+    // setCards([]); // Clear game logic cards temporarily; will be set after animation
+
+    // await new Promise(resolve => requestAnimationFrame(() => resolve()));
+
+    // setNewCardsAnimatingIn(true);
+
     cardRefs.current = {}; // Clear refs for old cards
-    setCardsToRender(preparedNewCardsForAnimation); // Set the new cards for rendering
     setCards([]); // Clear game logic cards temporarily; will be set after animation
 
-    await new Promise(resolve => requestAnimationFrame(() => resolve()));
+    // Wait one frame before setting cardsToRender and triggering animation
+    await new Promise(resolve => requestAnimationFrame(() => {
+      setCardsToRender(preparedNewCardsForAnimation); // Only show new cards when animation is ready
+      setNewCardsAnimatingIn(true);
+      resolve();
+    }));
 
-    setNewCardsAnimatingIn(true);
+
+
     await sleep(400);
     playSound(reshuffleSound);
 
@@ -208,12 +232,31 @@ export default function App() {
     document.body.classList.remove('scrolling-disabled');
   };
 
-  // Helper to calculate dynamic exit translation for cards (no longer used for specific coordinates)
-  // Removed as the CSS handles the direct downward swipe now.
+  // Helper to calculate dynamic exit translation for cards (restored for diagonal swipe)
+  const getCardExitStyle = (cardCenter, screenCenterElement) => {
+    if (!cardCenter || !screenCenterElement) return {};
+    const screenRect = screenCenterElement.getBoundingClientRect();
+    const screenX = screenRect.left + screenRect.width / 2;
+    // To make cards swipe downwards (as requested initially)
+    // We can define a target point far below the center of the screen
+    // For a diagonal effect, we can still use screenX as the target X, but for Y,
+    // let's make it the bottom of the viewport plus some offset.
+    const targetY = window.innerHeight + 200; // 200px below the bottom of the viewport
 
-  // Helper to calculate dynamic entry translation for cards (no longer used for specific coordinates)
-  // Removed as the CSS handles the direct upward entry now.
+    // Calculate dx (horizontal distance to screen center)
+    const dx = screenX - cardCenter.x;
+    // Calculate dy (vertical distance to targetY)
+    const dy = targetY - cardCenter.y;
 
+    const factor = 1.0; // Adjust if you want them to travel further/faster
+    return {
+      '--card-exit-x': `${dx * factor}px`,
+      '--card-exit-y': `${dy * factor}px`,
+    };
+  };
+
+  // Helper to calculate dynamic entry translation for cards (now primarily for the CSS class)
+  // This function is no longer actively used as entry animation is from fixed bottom-off-screen.
 
   // Effect for initial game setup on component mount (runs only once game is started by interaction)
   useEffect(() => {
@@ -423,6 +466,8 @@ export default function App() {
                       ${shouldAnimateIn && card.isFlipped ? 'initial-offscreen-hidden' : ''}
                     `}
                     style={{
+                      // Apply dynamicOutStyle only if animating out
+                      ... (shouldAnimateOut ? card.dynamicOutStyle : {}),
                       '--card-animation-delay': shouldAnimateIn ? `${index * 0.05}s` : '0s'
                     }}
                     ref={el => cardRefs.current[card.id] = el}
