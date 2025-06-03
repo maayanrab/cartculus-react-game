@@ -309,7 +309,7 @@ export default function App() {
         <h1 className="mb-4">CartCulus
              <h5 className="text-center">Practice Mode</h5>
         </h1>
-        <p className="lead">Click anywhere to start the playing.</p>
+        <p className="lead">Click anywhere to start playing.</p>
         {/* Hidden centerRef for calculations if needed even before game start, though less critical now */}
         <div ref={centerRef} className="screen-center-anchor d-none"></div>
       </div>
