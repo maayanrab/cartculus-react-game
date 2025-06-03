@@ -10,7 +10,7 @@ let undoSound;
 let operatorSound;
 let successSound;
 let reshuffleSound;
-let targetRevealSound;
+let cardRevealSound;
 let discardHandSound;
 
 // Define a constant for the total number of card slots
@@ -50,11 +50,11 @@ export default function App() {
         operatorSound = new Audio('./sounds/operator.wav');
         successSound = new Audio('./sounds/success.wav');
         reshuffleSound = new Audio('./sounds/reshuffle.wav');
-        targetRevealSound = new Audio('./sounds/target_reveal.wav');
+        cardRevealSound = new Audio('./sounds/card_reveal.wav');
         discardHandSound = new Audio('./sounds/discard_hand.wav');
 
         // Explicitly load the audio files to reduce playback delay
-        const soundsToLoad = [undoSound, operatorSound, successSound, reshuffleSound, targetRevealSound, discardHandSound];
+        const soundsToLoad = [undoSound, operatorSound, successSound, reshuffleSound, cardRevealSound, discardHandSound];
         soundsToLoad.forEach(sound => {
           if (sound) { // Check if sound object was created
             sound.load();
@@ -200,7 +200,7 @@ export default function App() {
     await sleep(600);
 
     setTargetCardFlipped(true); // Trigger the flip for the target card
-    playSound(targetRevealSound);
+    playSound(cardRevealSound);
     await sleep(600);
 
     // Now set the actual game state cards, ensuring invisible placeholders are maintained
@@ -221,6 +221,7 @@ export default function App() {
     });
 
     setCards(finalCardsState);
+    playSound(cardRevealSound);
     setOriginalCards(newGeneratedCards); // originalCards should only hold the actual cards (not placeholders)
     setSelected([]);
     setSelectedOperator(null);
