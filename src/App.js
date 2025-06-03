@@ -107,11 +107,8 @@ export default function App() {
     document.body.classList.add('scrolling-disabled');
 
     // --- Cards Exit Animation ---
-    // IMPORTANT CHANGE: Filter to only include currently visible cards for exit animation
-    const visibleCardsForExit = cards.filter(card => !card.invisible);
-
     const cardPositions = new Map();
-    visibleCardsForExit.forEach(card => { // Use visibleCardsForExit
+    cards.forEach(card => { // Use current 'cards' state for exiting cards
       const ref = cardRefs.current[card.id];
       if (ref) {
         const rect = ref.getBoundingClientRect();
@@ -122,15 +119,15 @@ export default function App() {
       }
     });
 
-    setCardsToRender(visibleCardsForExit.map(card => ({ // Use visibleCardsForExit
+    setCardsToRender(cards.map(card => ({ // Use current 'cards'
       ...card,
       dynamicOutStyle: getCardExitStyle(cardPositions.get(card.id), centerRef.current),
-      isTarget: false,
-      invisible: false // Ensure they are visible FOR THE ANIMATION even if they were hidden before
+      isTarget: false, 
+      invisible: false 
     })));
     
     // Only wait for exit animation if there were cards to exit
-    if (visibleCardsForExit.length > 0) { // Check length of visible cards
+    if (cards.length > 0) {
         await sleep(700); 
     }
 
