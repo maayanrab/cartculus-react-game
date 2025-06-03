@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Card({ value, onClick, selected, isAbstract, invisible, isFlipped = false, isTarget = false }) {
+export default function Card({ value, onClick, selected, isAbstract, invisible, isFlipped = false, isTarget = false, isPlaceholder = false }) {
   const formattedValue =
     typeof value === 'number' ? parseFloat(value.toFixed(3)) : value;
 
@@ -10,21 +10,21 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
 
   const backImagePath = './images/card_back.png';
 
+  // A card is visually hidden but occupies space if it's explicitly a placeholder
+  // or if the game logic marks it as invisible.
+  const shouldBePlaceholder = isPlaceholder || invisible;
+
   const cardStyle = {
-    cursor: isTarget ? 'default' : 'pointer', // Default cursor unless it's a target card
+    // Only allow click if it's not a target card, not a placeholder, and onClick is provided
+    cursor: isTarget || shouldBePlaceholder || !onClick ? 'default' : 'pointer',
   };
 
-  // The 'target-card-wrapper' class is applied if it's the target card
-  // The 'invisible-card' class controls visibility for cards removed from play
-  // The 'is-flipped' class controls the flip state of the inner element
   return (
     <div
-      className={`card ${selected ? 'selected' : ''} ${invisible ? 'invisible-card' : ''} ${isTarget ? 'target-card-wrapper' : ''}`}
+      className={`card ${selected ? 'selected' : ''} ${shouldBePlaceholder ? 'invisible-card' : ''} ${isTarget ? 'target-card-wrapper' : ''}`}
       onClick={onClick}
       style={cardStyle}
     >
-      {/* The card-inner div is the flippable element.
-          isFlipped prop from App.js determines its rotation. */}
       <div className={`card-inner ${isFlipped ? 'is-flipped' : ''}`}>
         {/* Front of the card */}
         <div className="card-face card-front">
