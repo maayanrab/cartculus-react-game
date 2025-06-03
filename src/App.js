@@ -23,6 +23,7 @@ export default function App() {
   const [autoReshuffle, setAutoReshuffle] = useState(true);
   const [userInteracted, setUserInteracted] = useState(false); // State to track user interaction
   const [soundsOn, setSoundsOn] = useState(true); // Sounds are on by default
+  const [gameStarted, setGameStarted] = useState(false); // New state to control game start
 
   // Animation states
   const [isReshuffling, setIsReshuffling] = useState(false);
@@ -49,27 +50,36 @@ export default function App() {
         discardHandSound = new Audio('./sounds/discard_hand.wav');
 
         // Explicitly load the audio files to reduce playback delay
-        undoSound.load();
-        operatorSound.load();
-        successSound.load();
-        reshuffleSound.load();
-        targetRevealSound.load();
-        discardHandSound.load();
-
+        const soundsToLoad = [undoSound, operatorSound, successSound, reshuffleSound, targetRevealSound, discardHandSound];
+        soundsToLoad.forEach(sound => {
+          if (sound) { // Check if sound object was created
+            sound.load();
+            // Optional: Log loading errors for individual sounds if needed
+            sound.onerror = () => console.error(`Error loading sound: ${sound.src}`);
+          }
+        });
+        
         setUserInteracted(true);
+        if (!gameStarted) { // If game hasn't started via this interaction, mark it to start
+            setGameStarted(true);
+        }
+
         document.removeEventListener('click', handleInitialInteraction);
         document.removeEventListener('keydown', handleInitialInteraction);
       }
     };
 
-    document.addEventListener('click', handleInitialInteraction);
-    document.addEventListener('keydown', handleInitialInteraction);
+    // Only add listeners if the game hasn't effectively started through interaction
+    if (!userInteracted) {
+        document.addEventListener('click', handleInitialInteraction);
+        document.addEventListener('keydown', handleInitialInteraction);
+    }
 
     return () => {
       document.removeEventListener('click', handleInitialInteraction);
       document.removeEventListener('keydown', handleInitialInteraction);
     };
-  }, [userInteracted]);
+  }, [userInteracted, gameStarted]); // Added gameStarted to dependencies
 
   // Helper function to play sounds
   const playSound = (audio) => {
@@ -82,10 +92,10 @@ export default function App() {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // Function to start a new round, with an optional flag to play reshuffle sound
-  const startNewRound = async (playdiscardHandSound = true) => {
+  const startNewRound = async (playInitialDiscardSound = true) => { // Renamed for clarity
     if (isReshuffling) return; // Prevent double-triggering
 
-    if (playdiscardHandSound) {
+    if (playInitialDiscardSound) { // Use the parameter name
       playSound(discardHandSound);
     }
 
@@ -97,9 +107,8 @@ export default function App() {
     document.body.classList.add('scrolling-disabled');
 
     // --- Cards Exit Animation ---
-    // Calculate positions for exiting cards
     const cardPositions = new Map();
-    cards.forEach(card => {
+    cards.forEach(card => { // Use current 'cards' state for exiting cards
       const ref = cardRefs.current[card.id];
       if (ref) {
         const rect = ref.getBoundingClientRect();
@@ -110,95 +119,73 @@ export default function App() {
       }
     });
 
-    // Render old cards with exit styles. They remain visible during this phase.
-    // Ensure they are not marked as invisible from previous game logic.
-    setCardsToRender(cards.map(card => ({
+    setCardsToRender(cards.map(card => ({ // Use current 'cards'
       ...card,
       dynamicOutStyle: getCardExitStyle(cardPositions.get(card.id), centerRef.current),
-      isTarget: false, // Ensure old target doesn't act as target during exit
-      invisible: false // Ensure they are visible for the animation
+      isTarget: false, 
+      invisible: false 
     })));
+    
+    // Only wait for exit animation if there were cards to exit
+    if (cards.length > 0) {
+        await sleep(700); 
+    }
 
-    await sleep(700); // Wait for cards to fly out
 
     // --- Generate New Cards and Prepare for Entry ---
     const { cards: newGeneratedCards, target: newTarget } = generateCardsAndTarget();
 
-    // Set the new target value immediately, but keep the target card visually flipped to its back initially
-    setTarget(newTarget); // Update the main target state
-    setCurrentRoundTarget(newTarget); // Update currentRoundTarget for display (the value that the target card shows)
+    setTarget(newTarget); 
+    setCurrentRoundTarget(newTarget); 
 
-    // Prepare new cards for animation. They start with isFlipped: true (showing back) and the 'initial-offscreen-hidden' class
     const preparedNewCardsForAnimation = newGeneratedCards.map(card => ({
       ...card,
-      isFlipped: true, // Initially flipped to show back
-      // The entry style is now handled by the 'initial-offscreen-hidden' class
-      // We don't need dynamicInStyle here, as the CSS class will apply the initial transform
+      isFlipped: true, 
     }));
 
-    // Reset cardRefs for incoming cards. This is important to ensure correct rect calculations later.
     cardRefs.current = {};
-
-    // First, set cardsToRender with the new cards and their initial off-screen state.
-    // This will cause React to render them, applying the 'initial-offscreen-hidden' class.
     setCardsToRender(preparedNewCardsForAnimation);
-    setCards([]); // Clear game logic cards, they will be set at the end
+    setCards([]); // Clear game logic cards; will be set after animation
 
-    // Wait for React to render the elements and for the browser to apply initial transforms (initial-offscreen-hidden styles)
-    // This `requestAnimationFrame` is CRUCIAL to prevent stuttering. It ensures the DOM is updated
-    // with the initial positions/opacity BEFORE we trigger the animation.
     await new Promise(resolve => requestAnimationFrame(() => resolve()));
-    // await sleep(50); // Removed: requestAnimationFrame should be sufficient
-
-    // Now, trigger the animation for new cards.
-    // This removes the 'initial-offscreen-hidden' class and adds 'card-animating-in'.
-    // The CSS transition then takes over.
+    
     setNewCardsAnimatingIn(true);
-    await sleep(400); // Wait for cards to flyin
-    playSound(reshuffleSound);
+    await sleep(400); 
+    playSound(reshuffleSound); // This should now play as userInteracted is true
 
-    // Wait for all new cards to be in their final positions
-    await sleep(800 + (newGeneratedCards.length - 1) * 50); // Adjust based on animation duration + max stagger delay
+    await sleep(800 + (newGeneratedCards.length - 1) * 50); 
 
     // --- Final Flips ---
-    // Flip all hand cards at once
-    setHandCardsFlipped(true); // This will trigger the flip animation for hand cards
-    await sleep(600); // Wait for the hand cards to flip
+    setHandCardsFlipped(true); 
+    await sleep(600); 
 
-    // Flip the target card (which now holds the *new* target value)
-    setTargetCardFlipped(true); // This will trigger the flip animation for the target card
-    playSound(targetRevealSound);
-    await sleep(600); // Wait for the target card to flip
+    setTargetCardFlipped(true); 
+    playSound(targetRevealSound); // This should also play
+    await sleep(600); 
 
-    // After all flips, update the main 'cards' state for normal game flow
-    // They should now be isFlipped: false for normal play (showing front).
     setCards(newGeneratedCards.map(card => ({ ...card, isFlipped: false })));
-    playSound(targetRevealSound);
-    setOriginalCards(newGeneratedCards); // Save for reset
+    // playSound(targetRevealSound); // This was a duplicate, targetReveal is played just before this
+    playSound(targetRevealSound); // This should also play
+    setOriginalCards(newGeneratedCards); 
     setSelected([]);
     setSelectedOperator(null);
-    setHistory([]);
+    setHistory([]); // Ensure history is cleared on new round
 
-    // Reset animation states
     setIsReshuffling(false);
     setNewCardsAnimatingIn(false);
 
     document.body.classList.remove('scrolling-disabled');
-
   };
 
   // Helper to calculate dynamic exit translation for cards
   const getCardExitStyle = (cardCenter, screenCenterElement) => {
     if (!cardCenter || !screenCenterElement) return {};
-
     const screenRect = screenCenterElement.getBoundingClientRect();
     const screenX = screenRect.left + screenRect.width / 2;
     const screenY = screenRect.top + screenRect.height / 2;
-
     const dx = screenX - cardCenter.x;
-    const dy = (window.innerHeight + screenRect.height / 2) - cardCenter.y; // Aiming towards bottom center of screen
-
-    const factor = 1.5; // Adjust factor as needed for desired trajectory
+    const dy = (window.innerHeight + screenRect.height / 2) - cardCenter.y;
+    const factor = 1.5;
     return {
       '--card-exit-x': `${dx * factor}px`,
       '--card-exit-y': `${dy * factor}px`,
@@ -206,35 +193,29 @@ export default function App() {
   };
 
   // Helper to calculate dynamic entry translation for cards (now primarily for the CSS class)
-  // This function is less critical now as the CSS class will handle the initial positioning.
-  // However, keeping it for `--card-enter-x` if you want a subtle horizontal alignment.
   const getCardEntryStyle = (targetCardElement, screenCenterElement) => {
-    // This function's role is diminished by 'initial-offscreen-hidden'
-    // It's still used to calculate the starting X position if needed for specific entry point.
     if (!targetCardElement || !screenCenterElement) return {};
-
     const targetRect = targetCardElement.getBoundingClientRect();
     const screenWidth = window.innerWidth;
     const rowCenter = screenWidth / 2;
     const entryDx = rowCenter - (targetRect.left + targetRect.width / 2);
-
     return {
       '--card-enter-x': `${-targetRect.left + entryDx + (screenWidth / 2 - rowCenter)}px`,
-      // '--card-enter-y' will be set by the initial-offscreen-hidden class in CSS.
     };
   };
 
-
-  // Effect for initial game setup on component mount (runs only once)
+  // Effect for initial game setup on component mount (runs only once game is started by interaction)
   useEffect(() => {
-    startNewRound(false); // Start without reshuffle sound on initial load
-  }, []);
+    if (gameStarted && userInteracted) { // Check both flags
+      startNewRound(true); // Start with all sounds enabled for the first round
+    }
+  }, [gameStarted, userInteracted]); // Depend on gameStarted and userInteracted
 
   // Effect for winning condition and auto-reshuffle
   useEffect(() => {
-    if (!isReshuffling && !newCardsAnimatingIn) { // Check when no animations are active
+    if (!isReshuffling && !newCardsAnimatingIn && gameStarted) { // Ensure game has started
       const visibleCards = cards.filter((card) => !card.invisible);
-      if (visibleCards.length === 1 && visibleCards[0].value === target) {
+      if (visibleCards.length === 1 && visibleCards[0].value === target && target !== null) { // ensure target isn't null
         confetti();
         playSound(successSound);
         if (autoReshuffle) {
@@ -242,11 +223,11 @@ export default function App() {
         }
       }
     }
-  }, [cards, target, autoReshuffle, userInteracted, soundsOn, isReshuffling, newCardsAnimatingIn]);
+  }, [cards, target, autoReshuffle, userInteracted, soundsOn, isReshuffling, newCardsAnimatingIn, gameStarted]); // Added gameStarted
 
 
   const handleCardClick = (id) => {
-    if (isReshuffling || newCardsAnimatingIn) return; // Prevent interaction during animation
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted) return; // Prevent interaction if game not started
 
     if (selected.includes(id)) {
       setSelected(selected.filter((sid) => sid !== id));
@@ -260,7 +241,7 @@ export default function App() {
   };
 
   const handleOperatorSelect = (op) => {
-    if (isReshuffling || newCardsAnimatingIn) return; // Prevent interaction during animation
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted) return; // Prevent interaction if game not started
 
     const newOp = selectedOperator === op ? null : op;
     setSelectedOperator(newOp);
@@ -270,10 +251,12 @@ export default function App() {
   };
 
   const performOperation = ([aId, bId], operator) => {
-    if (isReshuffling || newCardsAnimatingIn) return; // Prevent interaction during animation
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted) return; // Prevent interaction if game not started
 
     const a = cards.find((c) => c.id === aId);
     const b = cards.find((c) => c.id === bId);
+    if (!a || !b) return; // Ensure cards are found
+
     const result = operate(a.value, b.value, operator);
     if (result == null) return;
 
@@ -287,7 +270,7 @@ export default function App() {
 
     const newCards = cards.map((c) => {
       if (c.id === aId) return newCard;
-      if (c.id === bId) return { ...c, invisible: true }; // Keep invisible here for game logic (removed from play)
+      if (c.id === bId) return { ...c, invisible: true }; 
       return c;
     });
 
@@ -298,7 +281,7 @@ export default function App() {
   };
 
   const handleUndo = () => {
-    if (isReshuffling || newCardsAnimatingIn) return; // Prevent interaction during animation
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted) return; // Prevent interaction if game not started
     if (history.length === 0) return;
     playSound(undoSound);
     const prev = history[history.length - 1];
@@ -309,13 +292,29 @@ export default function App() {
   };
 
   const handleReset = () => {
-    if (isReshuffling || newCardsAnimatingIn) return; // Prevent interaction during animation
-    playSound(undoSound);
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted) return; // Prevent interaction if game not started
+    if (history.length === 0) return; // Prevent reset if no moves were made
+    playSound(undoSound); // Or a dedicated reset sound
     setCards(originalCards);
     setHistory([]);
     setSelected([]);
     setSelectedOperator(null);
   };
+
+  // Conditional rendering for "Click to start"
+  if (!userInteracted) {
+    return (
+      <div className="container text-center position-relative d-flex flex-column justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
+        {/* You can place the title here if you want it visible before interaction */}
+        <h1 className="mb-4">CartCulus
+             <h5 className="text-center">Practice Mode</h5>
+        </h1>
+        <p className="lead">Click anywhere to start the playing.</p>
+        {/* Hidden centerRef for calculations if needed even before game start, though less critical now */}
+        <div ref={centerRef} className="screen-center-anchor d-none"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="container text-center position-relative">
@@ -355,49 +354,49 @@ export default function App() {
         <h5 className="text-start text-sm-center">Practice Mode</h5>
       </h1>
 
-      <div className="target my-4">
-        <div className="target-border-bs">
-          <span className="target-text-bs">TARGET</span>
-          {/* Target card will always render with the new target value but its flip state is controlled by targetCardFlipped */}
-          <Card value={currentRoundTarget} isAbstract={currentRoundTarget < 1 || currentRoundTarget > 13} isTarget={true} isFlipped={!targetCardFlipped} />
-        </div>
-      </div>
-
-      <div className="container">
-        <div className="row justify-content-center gx-3 gy-3">
-          {/* Render cards based on animation state */}
-          {(isReshuffling || newCardsAnimatingIn ? cardsToRender : cards).map((card, index) => (
-            <div
-              key={card.id}
-              className={`col-6 col-sm-auto d-flex justify-content-center reshuffle-card-container
-                ${isReshuffling && !newCardsAnimatingIn ? 'card-animating-out' : ''}
-                ${newCardsAnimatingIn ? 'card-animating-in' : ''}
-                ${(isReshuffling && card.isFlipped) || (newCardsAnimatingIn && card.isFlipped) ? 'initial-offscreen-hidden' : ''}
-              `}
-              style={{
-                ...card.dynamicOutStyle, // Apply dynamic exit style
-                // Removed dynamicInStyle here, 'initial-offscreen-hidden' handles initial entry positioning
-                // but we keep it if you still want to calculate and pass `--card-enter-x` for horizontal adjustments
-                '--card-animation-delay': newCardsAnimatingIn ? `${index * 0.05}s` : '0s'
-              }}
-              ref={el => cardRefs.current[card.id] = el}
-            >
-              <Card
-                value={card.value}
-                selected={selected.includes(card.id)}
-                onClick={
-                  !isReshuffling && !newCardsAnimatingIn ? () => handleCardClick(card.id) : undefined
-                }
-                isAbstract={card.isAbstract}
-                invisible={card.invisible} // Keep this if 'invisible' prop is used for cards removed from play
-                // Control isFlipped: during animation, use card's own isFlipped state. After, use handCardsFlipped.
-                // The `initial-offscreen-hidden` class already implies `isFlipped: true` for initial state.
-                isFlipped={!isReshuffling && !newCardsAnimatingIn ? !handCardsFlipped : card.isFlipped}
-              />
+      {/* Only render target and cards if game has started */}
+      {gameStarted && (
+        <>
+          <div className="target my-4">
+            <div className="target-border-bs">
+              <span className="target-text-bs">TARGET</span>
+              <Card value={currentRoundTarget} isAbstract={currentRoundTarget < 1 || currentRoundTarget > 13} isTarget={true} isFlipped={!targetCardFlipped} />
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
+
+          <div className="container">
+            <div className="row justify-content-center gx-3 gy-3">
+              {(isReshuffling || newCardsAnimatingIn ? cardsToRender : cards).map((card, index) => (
+                <div
+                  key={card.id}
+                  className={`col-6 col-sm-auto d-flex justify-content-center reshuffle-card-container
+                    ${isReshuffling && !newCardsAnimatingIn ? 'card-animating-out' : ''}
+                    ${newCardsAnimatingIn ? 'card-animating-in' : ''}
+                    ${(isReshuffling && card.isFlipped) || (newCardsAnimatingIn && card.isFlipped) ? 'initial-offscreen-hidden' : ''}
+                  `}
+                  style={{
+                    ...card.dynamicOutStyle,
+                    '--card-animation-delay': newCardsAnimatingIn ? `${index * 0.05}s` : '0s'
+                  }}
+                  ref={el => cardRefs.current[card.id] = el}
+                >
+                  <Card
+                    value={card.value}
+                    selected={selected.includes(card.id)}
+                    onClick={
+                      !isReshuffling && !newCardsAnimatingIn ? () => handleCardClick(card.id) : undefined
+                    }
+                    isAbstract={card.isAbstract}
+                    invisible={card.invisible}
+                    isFlipped={!isReshuffling && !newCardsAnimatingIn ? !handCardsFlipped : card.isFlipped}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
 
       <div className="operators my-4 d-flex justify-content-center">
         {[
@@ -408,11 +407,10 @@ export default function App() {
         ].map(({ op, src }) => (
           <button
             key={op}
-            className={`operator-button ${
-              selectedOperator === op ? 'selected-operator' : ''
-            }`}
+            className={`operator-button ${selectedOperator === op ? 'selected-operator' : ''
+              }`}
             onClick={() => handleOperatorSelect(op)}
-            disabled={isReshuffling || newCardsAnimatingIn}
+            disabled={isReshuffling || newCardsAnimatingIn || !gameStarted} // Disable if game not started
           >
             <img src={src} alt={op} className="operator-img" />
           </button>
@@ -420,9 +418,9 @@ export default function App() {
       </div>
 
       <div className="controls d-flex justify-content-center gap-2">
-        <button className="btn btn-info" onClick={handleUndo} disabled={isReshuffling || newCardsAnimatingIn}>Undo</button>
-        <button className="btn btn-warning" onClick={handleReset} disabled={isReshuffling || newCardsAnimatingIn}>Reset</button>
-        <button className="btn btn-success" onClick={() => startNewRound(true)} disabled={isReshuffling || newCardsAnimatingIn}>Reshuffle</button>
+        <button className="btn btn-info" onClick={handleUndo} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || history.length === 0}>Undo</button>
+        <button className="btn btn-warning" onClick={handleReset} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || history.length === 0}>Reset</button>
+        <button className="btn btn-success" onClick={() => startNewRound(true)} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}>Reshuffle</button>
       </div>
     </div>
   );
