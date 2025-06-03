@@ -36,6 +36,13 @@ body.scrolling-disabled {
   /* Make sure it still occupies space so layout doesn't jump */
 }
 
+/* Add this to ensure the card-inner of a placeholder is also hidden */
+.invisible-card .card-inner {
+    visibility: hidden;
+    /* Important: This ensures the card content itself doesn't show through */
+}
+
+
 /* --- Card Flip Mechanism (applies to all flippable cards) --- */
 .card-inner {
   position: relative;
@@ -213,7 +220,8 @@ button {
   }
   100% {
     opacity: 0;
-    transform: translate(calc(var(--card-exit-x, 0px)), calc(var(--card-exit-y, 0px)));
+    /* Use the custom properties for diagonal exit */
+    transform: translate(var(--card-exit-x, 0px), var(--card-exit-y, 0px));
   }
 }
 
@@ -222,7 +230,7 @@ button {
    and *before* adding 'card-animating-in'. */
 .reshuffle-card-container.initial-offscreen-hidden {
   opacity: 0;
-  transform: translate(var(--card-enter-x, 0px), var(--card-enter-y, 150vh));
+  transform: translate(0, 150vh); /* Start from off-screen bottom for entry */
   visibility: hidden; /* Hide immediately until animation starts */
   /* Ensure the inner card is also in its starting (flipped) state without transition */
   .card-inner {
@@ -244,8 +252,7 @@ button {
 @keyframes container-fly-in {
   0% {
     opacity: 0; /* Starts completely invisible */
-    /* Use the initial transform directly from the custom property */
-    transform: translate(var(--card-enter-x, 0px), var(--card-enter-y, 150vh));
+    transform: translate(0, 150vh); /* Start from off-screen bottom */
   }
   1% {
     /* Become visible very quickly, effectively starting animation as fully visible */
