@@ -1,5 +1,5 @@
 {
-  "homepage": "https://maayanrab.github.io/cartculus-react-game/",
+  "_homepage": "https://maayanrab.github.io/cartculus-react-game/",
   "name": "cartculus-react-game",
   "version": "1.0.0",
   "description": "A mathematical card game using React",
