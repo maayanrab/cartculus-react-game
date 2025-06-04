@@ -239,18 +239,19 @@ export default function App() {
   }, [selected, selectedOperator]); // Depend on selected and selectedOperator
 
   const handleCardClick = (id) => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo) return;
+    if (!gameStarted) return; // Keep this basic game state check
 
-    const clickedCard = cards.find(c => c.id === id);
-    if (!clickedCard || clickedCard.isPlaceholder || clickedCard.invisible) return;
+    const clickedCard = cards.find((c) => c.id === id);
+    if (!clickedCard || clickedCard.isPlaceholder || clickedCard.invisible)
+      return;
 
-    setSelected(prevSelected => {
+    setSelected((prevSelected) => {
       if (prevSelected.includes(id)) {
         return prevSelected.filter((sid) => sid !== id);
       } else if (prevSelected.length < 2) {
         return [...prevSelected, id];
       }
-      return prevSelected; // If already two cards selected, don't add more
+      return prevSelected;
     });
   };
 
@@ -420,8 +421,17 @@ export default function App() {
                     <Card
                       value={card.value}
                       selected={selected.includes(card.id)}
+                      // onClick={
+                      //   !isReshuffling && !newCardsAnimatingIn && !card.isPlaceholder && !card.invisible && !flyingCardInfo ? () => handleCardClick(card.id) : undefined
+                      // }
                       onClick={
-                        !isReshuffling && !newCardsAnimatingIn && !card.isPlaceholder && !card.invisible && !flyingCardInfo ? () => handleCardClick(card.id) : undefined
+                        !isReshuffling &&
+                        !newCardsAnimatingIn &&
+                        !card.isPlaceholder &&
+                        !card.invisible &&
+                        (flyingCardInfo ? flyingCardInfo.id !== card.id : true)
+                          ? () => handleCardClick(card.id)
+                          : undefined
                       }
                       isAbstract={card.isAbstract}
                       invisible={card.invisible && !isNewlyMerged}
