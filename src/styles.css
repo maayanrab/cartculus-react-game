@@ -290,3 +290,55 @@ button {
 .reshuffle-card-container.card-animating-in {
     animation-delay: var(--card-animation-delay); /* Apply animation delay to the wrapper */
 }
+
+
+
+/* --- Merge Operation Animations --- */
+
+/* For the card that flies from card B's slot to card A's slot and disappears */
+.flying-merge-card {
+  animation: flyToTargetAndFade 0.7s forwards ease-in-out;
+  /* The Card component inside should not have extra margins affecting its container size */
+}
+
+@keyframes flyToTargetAndFade {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  /* Optional: mid-point adjustment if needed for visual appeal */
+  /* 50% {
+    transform: translate(calc(var(--translateX) * 0.75), calc(var(--translateY) * 0.75)) scale(0.8);
+    opacity: 0.7;
+  } */
+  100% {
+    transform: translate(var(--translateX), var(--translateY)) scale(0.3); /* Shrink more */
+    opacity: 0;
+  }
+}
+
+/* For the new card appearing in card A's slot */
+/* This class is applied to the .reshuffle-card-container */
+.reshuffle-card-container.newly-merged-card-appear-container {
+  /* The animation will affect the container, and thus the Card component inside */
+  animation: newlyMergedAppear 0.5s forwards ease-out;
+  animation-delay: 0.2s; /* Start appearing as the other card is half-way or finishing its travel */
+  /* Ensure it's visible if it was part of an invisible placeholder before */
+  opacity: 0; /* Start transparent, animation will make it opaque */
+}
+
+@keyframes newlyMergedAppear {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Ensure the card inside the .flying-merge-card div has no margin if .card class adds it globally */
+.flying-merge-card .card {
+  margin: 0; 
+}

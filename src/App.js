@@ -5,7 +5,7 @@ import confetti from 'canvas-confetti';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './styles.css';
 
-// Declare Audio objects globally. They will be initialized and preloaded after first user interaction.
+// Declare Audio objects globally.
 let undoSound;
 let operatorSound;
 let successSound;
@@ -13,8 +13,8 @@ let reshuffleSound;
 let cardRevealSound;
 let discardHandSound;
 
-// Define a constant for the total number of card slots
-const TOTAL_CARD_SLOTS = 4; // Assuming 4 cards always
+const TOTAL_CARD_SLOTS = 4;
+const MERGE_ANIMATION_DURATION = 700; // ms
 
 export default function App() {
   const [cards, setCards] = useState([]);
@@ -24,28 +24,25 @@ export default function App() {
   const [originalCards, setOriginalCards] = useState([]);
   const [history, setHistory] = useState([]);
   const [autoReshuffle, setAutoReshuffle] = useState(true);
-  const [userInteracted, setUserInteracted] = useState(false); // State to track user interaction
-  const [soundsOn, setSoundsOn] = useState(true); // Sounds are on by default
-  const [gameStarted, setGameStarted] = useState(false); // New state to control game start
+  const [userInteracted, setUserInteracted] = useState(false);
+  const [soundsOn, setSoundsOn] = useState(true);
+  const [gameStarted, setGameStarted] = useState(false);
 
   // Animation states
   const [isReshuffling, setIsReshuffling] = useState(false);
   const [newCardsAnimatingIn, setNewCardsAnimatingIn] = useState(false);
-  // cardsToRender will now be an array of objects that represent slots, not just active cards
   const [cardsToRender, setCardsToRender] = useState([]);
-  const [handCardsFlipped, setHandCardsFlipped] = useState(false); // Controls the final flip of hand cards
-  const [targetCardFlipped, setTargetCardFlipped] = useState(false); // Controls the target card flip
-  const [currentRoundTarget, setCurrentRoundTarget] = useState(null); // Holds target for current round display for the target card
+  const [handCardsFlipped, setHandCardsFlipped] = useState(false);
+  const [targetCardFlipped, setTargetCardFlipped] = useState(false);
+  const [currentRoundTarget, setCurrentRoundTarget] = useState(null);
+  const [flyingCardInfo, setFlyingCardInfo] = useState(null); // For merge animation
 
-  // Refs to get card positions for dynamic animation paths
   const cardRefs = useRef({});
-  const centerRef = useRef(null); // Ref for the center of the screen
+  const centerRef = useRef(null);
 
-  // Effect to initialize Audio objects and set userInteracted flag
   useEffect(() => {
     const handleInitialInteraction = () => {
       if (!userInteracted) {
-        // Initialize Audio objects
         undoSound = new Audio('./sounds/undo.wav');
         operatorSound = new Audio('./sounds/operator.wav');
         successSound = new Audio('./sounds/success.wav');
@@ -53,19 +50,17 @@ export default function App() {
         cardRevealSound = new Audio('./sounds/card_reveal.wav');
         discardHandSound = new Audio('./sounds/discard_hand.wav');
 
-        // Explicitly load the audio files to reduce playback delay
         const soundsToLoad = [undoSound, operatorSound, successSound, reshuffleSound, cardRevealSound, discardHandSound];
         soundsToLoad.forEach(sound => {
-          if (sound) { // Check if sound object was created
+          if (sound) {
             sound.load();
-            // Optional: Log loading errors for individual sounds if needed
             sound.onerror = () => console.error(`Error loading sound: ${sound.src}`);
           }
         });
 
         setUserInteracted(true);
-        if (!gameStarted) { // If game hasn't started via this interaction, mark it to start
-            setGameStarted(true);
+        if (!gameStarted) {
+          setGameStarted(true);
         }
 
         document.removeEventListener('click', handleInitialInteraction);
@@ -73,19 +68,17 @@ export default function App() {
       }
     };
 
-    // Only add listeners if the game hasn't effectively started through interaction
     if (!userInteracted) {
-        document.addEventListener('click', handleInitialInteraction);
-        document.addEventListener('keydown', handleInitialInteraction);
+      document.addEventListener('click', handleInitialInteraction);
+      document.addEventListener('keydown', handleInitialInteraction);
     }
 
     return () => {
       document.removeEventListener('click', handleInitialInteraction);
       document.removeEventListener('keydown', handleInitialInteraction);
     };
-  }, [userInteracted, gameStarted]); // Added gameStarted to dependencies
+  }, [userInteracted, gameStarted]);
 
-  // Helper function to play sounds
   const playSound = (audio) => {
     if (userInteracted && audio && soundsOn) {
       audio.currentTime = 0;
@@ -95,23 +88,19 @@ export default function App() {
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  // Function to start a new round, with an optional flag to play reshuffle sound
-  const startNewRound = async (playInitialDiscardSound = true) => { // Renamed for clarity
-    if (isReshuffling) return; // Prevent double-triggering
+  const startNewRound = async (playInitialDiscardSound = true) => {
+    if (isReshuffling || flyingCardInfo) return;
 
-    if (playInitialDiscardSound) { // Use the parameter name
+    if (playInitialDiscardSound) {
       playSound(discardHandSound);
     }
 
-    setIsReshuffling(true); // Signal that reshuffle animation is starting
-    setNewCardsAnimatingIn(false); // Ensure this is false before exit animation
-    setHandCardsFlipped(false); // Ensure new hand cards start unflipped (showing back)
-    setTargetCardFlipped(false); // Ensure target card starts unflipped (showing back for the animation)
-
+    setIsReshuffling(true);
+    setNewCardsAnimatingIn(false);
+    setHandCardsFlipped(false);
+    setTargetCardFlipped(false);
     document.body.classList.add('scrolling-disabled');
 
-    // --- Cards Exit Animation ---
-    // Filter for actively visible cards for the exit animation
     const currentlyVisibleCards = cards.filter(card => !card.invisible && !card.isPlaceholder);
     const cardPositions = new Map();
     currentlyVisibleCards.forEach(card => {
@@ -125,89 +114,66 @@ export default function App() {
       }
     });
 
-    // Prepare cards for rendering during the exit animation
-    // Only apply dynamicOutStyle to cards that are actually flying out
     setCardsToRender(cards.map(card => ({
       ...card,
       dynamicOutStyle: (!card.invisible && !card.isPlaceholder) ? getCardExitStyle(cardPositions.get(card.id), centerRef.current) : {},
       isTarget: false,
-      invisible: card.isPlaceholder ? true : card.invisible // Keep placeholders invisible
+      invisible: card.isPlaceholder ? true : card.invisible
     })));
 
-    // Only wait for exit animation if there were cards to exit
     if (currentlyVisibleCards.length > 0) {
-        await sleep(700);
+      await sleep(700);
     }
 
-    // --- Generate New Cards and Prepare for Entry ---
     const { cards: newGeneratedCards, target: newTarget } = generateCardsAndTarget();
-
     setTarget(newTarget);
     setCurrentRoundTarget(newTarget);
 
-    // Prepare new cards for animation. Fill all TOTAL_CARD_SLOTS.
     const preparedNewCardsForAnimation = Array.from({ length: TOTAL_CARD_SLOTS }).map((_, index) => {
       const newCard = newGeneratedCards[index];
       if (newCard) {
         return {
           ...newCard,
-          isFlipped: true, // Start flipped (showing back) for entry animation
+          isFlipped: true,
           isPlaceholder: false,
-          invisible: false, // Ensure visible for animation
+          invisible: false,
         };
       } else {
-        // Create a placeholder for any empty slots
         return {
-          id: `placeholder-entry-${Date.now()}-${index}`, // Unique ID for placeholder
-          value: null, // No value for placeholder
+          id: `placeholder-entry-${Date.now()}-${index}`,
+          value: null,
           isAbstract: false,
-          isFlipped: false, // Placeholder doesn't flip
-          isPlaceholder: true, // Mark as placeholder
-          invisible: true // Make it visually invisible but occupies space
+          isFlipped: false,
+          isPlaceholder: true,
+          invisible: true
         };
       }
     });
 
-    // BEFORE ANIMATION FIX:
-    // cardRefs.current = {}; // Clear refs for old cards
-    // setCardsToRender(preparedNewCardsForAnimation); // Set the new cards for rendering
-    // setCards([]); // Clear game logic cards temporarily; will be set after animation
+    cardRefs.current = {};
+    setCards([]);
 
-    // await new Promise(resolve => requestAnimationFrame(() => resolve()));
-
-    // setNewCardsAnimatingIn(true);
-
-    cardRefs.current = {}; // Clear refs for old cards
-    setCards([]); // Clear game logic cards temporarily; will be set after animation
-
-    // Wait one frame before setting cardsToRender and triggering animation
     await new Promise(resolve => requestAnimationFrame(() => {
-      setCardsToRender(preparedNewCardsForAnimation); // Only show new cards when animation is ready
+      setCardsToRender(preparedNewCardsForAnimation);
       setNewCardsAnimatingIn(true);
       resolve();
     }));
 
-
-
     await sleep(400);
     playSound(reshuffleSound);
+    await sleep(800 + (newGeneratedCards.length > 0 ? (newGeneratedCards.length - 1) * 50 : 0));
 
-    // Wait for the new cards to animate in (and their individual delays)
-    await sleep(800 + (newGeneratedCards.length > 0 ? (newGeneratedCards.length - 1) * 50 : 0)); // Adjust delay based on actual cards
-
-    // --- Final Flips ---
-    setHandCardsFlipped(true); // Trigger the flip for the hand cards
+    setHandCardsFlipped(true);
     await sleep(600);
 
-    setTargetCardFlipped(true); // Trigger the flip for the target card
+    setTargetCardFlipped(true);
     playSound(cardRevealSound);
     await sleep(600);
 
-    // Now set the actual game state cards, ensuring invisible placeholders are maintained
     const finalCardsState = Array.from({ length: TOTAL_CARD_SLOTS }).map((_, index) => {
       const generatedCard = newGeneratedCards[index];
       if (generatedCard) {
-        return { ...generatedCard, isFlipped: false, invisible: false, isPlaceholder: false }; // Ensure they are front-facing for gameplay
+        return { ...generatedCard, isFlipped: false, invisible: false, isPlaceholder: false };
       } else {
         return {
           id: `placeholder-final-${Date.now()}-${index}`,
@@ -215,62 +181,47 @@ export default function App() {
           isAbstract: false,
           isFlipped: false,
           isPlaceholder: true,
-          invisible: true // Maintain visual invisibility for placeholders
+          invisible: true
         };
       }
     });
 
     setCards(finalCardsState);
-    playSound(cardRevealSound);
-    setOriginalCards(newGeneratedCards); // originalCards should only hold the actual cards (not placeholders)
+    // playSound(cardRevealSound); // Already played for target reveal
+    setOriginalCards(newGeneratedCards);
     setSelected([]);
     setSelectedOperator(null);
     setHistory([]);
-
     setIsReshuffling(false);
     setNewCardsAnimatingIn(false);
-
     document.body.classList.remove('scrolling-disabled');
   };
 
-  // Helper to calculate dynamic exit translation for cards (restored for diagonal swipe)
   const getCardExitStyle = (cardCenter, screenCenterElement) => {
     if (!cardCenter || !screenCenterElement) return {};
     const screenRect = screenCenterElement.getBoundingClientRect();
     const screenX = screenRect.left + screenRect.width / 2;
-    // To make cards swipe downwards (as requested initially)
-    // We can define a target point far below the center of the screen
-    // For a diagonal effect, we can still use screenX as the target X, but for Y,
-    // let's make it the bottom of the viewport plus some offset.
-    const targetY = window.innerHeight + 200; // 200px below the bottom of the viewport
-
-    // Calculate dx (horizontal distance to screen center)
+    const targetY = window.innerHeight + 200;
     const dx = screenX - cardCenter.x;
-    // Calculate dy (vertical distance to targetY)
     const dy = targetY - cardCenter.y;
-
-    const factor = 1.0; // Adjust if you want them to travel further/faster
+    const factor = 1.0;
     return {
       '--card-exit-x': `${dx * factor}px`,
       '--card-exit-y': `${dy * factor}px`,
     };
   };
 
-  // Helper to calculate dynamic entry translation for cards (now primarily for the CSS class)
-  // This function is no longer actively used as entry animation is from fixed bottom-off-screen.
-
-  // Effect for initial game setup on component mount (runs only once game is started by interaction)
   useEffect(() => {
-    if (gameStarted && userInteracted) { // Check both flags
-      startNewRound(true); // Start with all sounds enabled for the first round
+    if (gameStarted && userInteracted) {
+      startNewRound(true);
     }
-  }, [gameStarted, userInteracted]); // Depend on gameStarted and userInteracted
+  }, [gameStarted, userInteracted]);
+  // startNewRound is memoized via its own internal check for isReshuffling
 
-  // Effect for winning condition and auto-reshuffle
   useEffect(() => {
-    if (!isReshuffling && !newCardsAnimatingIn && gameStarted) { // Ensure game has started
-      const visibleCards = cards.filter((card) => !card.invisible && !card.isPlaceholder); // Filter out true placeholders
-      if (visibleCards.length === 1 && visibleCards[0].value === target && target !== null) { // ensure target isn't null
+    if (!isReshuffling && !newCardsAnimatingIn && gameStarted && !flyingCardInfo) {
+      const visibleCards = cards.filter((card) => !card.invisible && !card.isPlaceholder);
+      if (visibleCards.length === 1 && visibleCards[0].value === target && target !== null) {
         confetti();
         playSound(successSound);
         if (autoReshuffle) {
@@ -278,15 +229,13 @@ export default function App() {
         }
       }
     }
-  }, [cards, target, autoReshuffle, userInteracted, soundsOn, isReshuffling, newCardsAnimatingIn, gameStarted]);
-
+  }, [cards, target, autoReshuffle, userInteracted, soundsOn, isReshuffling, newCardsAnimatingIn, gameStarted, flyingCardInfo]);
 
   const handleCardClick = (id) => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted) return; // Prevent interaction if game not started
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo) return;
 
-    // Find the clicked card from the current state (which includes placeholders)
     const clickedCard = cards.find(c => c.id === id);
-    if (!clickedCard || clickedCard.isPlaceholder || clickedCard.invisible) return; // Cannot select placeholder or invisible card
+    if (!clickedCard || clickedCard.isPlaceholder || clickedCard.invisible) return;
 
     if (selected.includes(id)) {
       setSelected(selected.filter((sid) => sid !== id));
@@ -300,7 +249,7 @@ export default function App() {
   };
 
   const handleOperatorSelect = (op) => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted) return; // Prevent interaction if game not started
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo) return;
 
     const newOp = selectedOperator === op ? null : op;
     setSelectedOperator(newOp);
@@ -310,70 +259,94 @@ export default function App() {
   };
 
   const performOperation = ([aId, bId], operator) => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted) return; // Prevent interaction if game not started
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo) return;
 
-    const a = cards.find((c) => c.id === aId);
-    const b = cards.find((c) => c.id === bId);
-    if (!a || !b) return; // Ensure cards are found
+    const cardA_Obj = cards.find((c) => c.id === aId);
+    const cardB_Obj = cards.find((c) => c.id === bId);
+    if (!cardA_Obj || !cardB_Obj) return;
 
-    const result = operate(a.value, b.value, operator);
+    const result = operate(cardA_Obj.value, cardB_Obj.value, operator);
     if (result == null) return;
 
-    // Store a copy of the *current* full cards array, including placeholders, for history
-    setHistory((prev) => [...prev, cards.map(c => ({...c}))]); // Deep copy to prevent mutation
+    setHistory((prev) => [...prev, cards.map(c => ({ ...c }))]);
 
-    const newCard = {
-      id: Date.now(),
-      value: result,
-      isAbstract: result < 1 || result > 13 || parseInt(result) !== result,
-      isFlipped: false, // Newly created card is front-facing
-      invisible: false,
-      isPlaceholder: false
-    };
+    const newCardResultId = Date.now();
 
-    const newCards = cards.map((c) => {
-      if (c.id === aId) return newCard; // Replace card 'a' with the result
-      if (c.id === bId) return { ...c, invisible: true }; // Mark card 'b' as invisible
-      return c; // Keep other cards as they are (including existing placeholders)
+    // Prepare card B for its animation
+    const cardBRef = cardRefs.current[bId];
+    const cardARef = cardRefs.current[aId];
+
+    if (cardBRef && cardARef) {
+      const bRect = cardBRef.getBoundingClientRect();
+      const aRect = cardARef.getBoundingClientRect();
+      
+      const targetCenterX = aRect.left + aRect.width / 2;
+      const targetCenterY = aRect.top + aRect.height / 2;
+      const sourceCenterX = bRect.left + bRect.width / 2;
+      const sourceCenterY = bRect.top + bRect.height / 2;
+
+      setFlyingCardInfo({
+        id: bId, // Technically, this is for the visual clone
+        value: cardB_Obj.value,
+        isAbstract: cardB_Obj.isAbstract,
+        initialLeft: bRect.left,
+        initialTop: bRect.top,
+        width: bRect.width,
+        height: bRect.height,
+        translateX: targetCenterX - sourceCenterX,
+        translateY: targetCenterY - sourceCenterY,
+      });
+    }
+
+    const updatedCards = cards.map((c) => {
+      if (c.id === aId) return {
+        id: newCardResultId, // New card takes slot of A
+        value: result,
+        isAbstract: result < 1 || result > 13 || parseInt(result) !== result,
+        isFlipped: false,
+        invisible: false,
+        isPlaceholder: false,
+        isNewlyMerged: true, // Flag for "appear" animation
+      };
+      if (c.id === bId) return { ...c, invisible: true }; // Original card B becomes invisible in layout
+      return c;
     });
 
-    setCards(newCards);
+    setCards(updatedCards);
+    playSound(operatorSound);
     setSelected([]);
     setSelectedOperator(null);
-    playSound(operatorSound);
+
+    setTimeout(() => {
+      setFlyingCardInfo(null);
+      setCards(currentCards =>
+        currentCards.map(c => (c.id === newCardResultId ? { ...c, isNewlyMerged: false } : c))
+      );
+    }, MERGE_ANIMATION_DURATION);
   };
 
   const handleUndo = () => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted) return; // Prevent interaction if game not started
-    if (history.length === 0) return;
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo || history.length === 0) return;
     playSound(undoSound);
     const prev = history[history.length - 1];
-    setCards(prev); // Revert to the previous full state
+    setCards(prev);
     setHistory(history.slice(0, -1));
     setSelected([]);
     setSelectedOperator(null);
   };
 
   const handleReset = () => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted) return; // Prevent interaction if game not started
-    if (history.length === 0 && originalCards.length === 0) return; // Prevent reset if no moves were made and no original cards
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo || (history.length === 0 && originalCards.length === 0)) return;
+    playSound(undoSound);
 
-    playSound(undoSound); // Or a dedicated reset sound
-
-    // Construct the reset state with original cards and placeholders
     const resetCardsState = Array.from({ length: TOTAL_CARD_SLOTS }).map((_, index) => {
       const originalCard = originalCards[index];
       if (originalCard) {
         return { ...originalCard, isFlipped: false, invisible: false, isPlaceholder: false };
       } else {
-        // If originalCards had less than TOTAL_CARD_SLOTS, fill the rest with placeholders
         return {
           id: `placeholder-reset-${Date.now()}-${index}`,
-          value: null,
-          isAbstract: false,
-          isFlipped: false,
-          isPlaceholder: true,
-          invisible: true
+          value: null, isAbstract: false, isFlipped: false, isPlaceholder: true, invisible: true
         };
       }
     });
@@ -384,16 +357,11 @@ export default function App() {
     setSelectedOperator(null);
   };
 
-  // Conditional rendering for "Click to start"
   if (!userInteracted) {
     return (
       <div className="container text-center position-relative d-flex flex-column justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-        {/* You can place the title here if you want it visible before interaction */}
-        <h1 className="mb-4">CartCulus
-             <h5 className="text-center">Practice Mode</h5>
-        </h1>
+        <h1 className="mb-4">CartCulus<h5 className="text-center">Practice Mode</h5></h1>
         <p className="lead">Use all four cards to reach the target value. Press anywhere to start. Good luck!</p>
-        {/* Hidden centerRef for calculations if needed even before game start, though less critical now */}
         <div ref={centerRef} className="screen-center-anchor d-none"></div>
       </div>
     );
@@ -401,43 +369,21 @@ export default function App() {
 
   return (
     <div className="container text-center position-relative">
-      {/* Target for center positioning calculations (hidden) */}
       <div ref={centerRef} className="screen-center-anchor d-none"></div>
 
-      {/* Toggle top right */}
       <div className="position-absolute top-0 end-0 m-2">
         <div className="form-check form-switch">
-          <input
-            className="form-check-input"
-            type="checkbox"
-            id="autoReshuffleToggle"
-            checked={autoReshuffle}
-            onChange={() => setAutoReshuffle(!autoReshuffle)}
-          />
-          <label className="form-check-label" htmlFor="autoReshuffleToggle">
-            Auto-reshuffle
-          </label>
+          <input className="form-check-input" type="checkbox" id="autoReshuffleToggle" checked={autoReshuffle} onChange={() => setAutoReshuffle(!autoReshuffle)} />
+          <label className="form-check-label" htmlFor="autoReshuffleToggle">Auto-reshuffle</label>
         </div>
-        {/* Sounds Toggle */}
         <div className="form-check form-switch mt-2">
-          <input
-            className="form-check-input"
-            type="checkbox"
-            id="soundsToggle"
-            checked={soundsOn}
-            onChange={() => setSoundsOn(!soundsOn)}
-          />
-          <label className="form-check-label" htmlFor="soundsToggle">
-            Sounds
-          </label>
+          <input className="form-check-input" type="checkbox" id="soundsToggle" checked={soundsOn} onChange={() => setSoundsOn(!soundsOn)} />
+          <label className="form-check-label" htmlFor="soundsToggle">Sounds</label>
         </div>
       </div>
 
-      <h1 className="text-start text-sm-center">CartCulus
-        <h5 className="text-start text-sm-center">Practice Mode</h5>
-      </h1>
+      <h1 className="text-start text-sm-center">CartCulus<h5 className="text-start text-sm-center">Practice Mode</h5></h1>
 
-      {/* Only render target and cards if game has started */}
       {gameStarted && (
         <>
           <div className="target my-4">
@@ -448,15 +394,11 @@ export default function App() {
           </div>
 
           <div className="container">
-            <div className="row justify-content-center gx-3 gy-3">
-              {/* Render either cardsToRender (during animation) or cards (normal play) */}
+            <div className="row justify-content-center gx-3 gy-3 position-relative"> {/* Added position-relative for flying card context if needed, though fixed is used */}
               {(isReshuffling || newCardsAnimatingIn ? cardsToRender : cards).map((card, index) => {
-                // Determine if this specific card should animate out
-                // Only animate out if reshuffling AND it's not a placeholder AND it's not already invisible
                 const shouldAnimateOut = isReshuffling && !newCardsAnimatingIn && !card.isPlaceholder && !card.invisible;
-                // Determine if this specific card should animate in
-                // Only animate in if newCardsAnimatingIn AND it's not a placeholder
                 const shouldAnimateIn = newCardsAnimatingIn && !card.isPlaceholder;
+                const isNewlyMerged = card.isNewlyMerged; // Check for merge animation flag
 
                 return (
                   <div
@@ -465,10 +407,10 @@ export default function App() {
                       ${shouldAnimateOut ? 'card-animating-out' : ''}
                       ${shouldAnimateIn ? 'card-animating-in' : ''}
                       ${shouldAnimateIn && card.isFlipped ? 'initial-offscreen-hidden' : ''}
+                      ${isNewlyMerged ? 'newly-merged-card-appear-container' : ''}
                     `}
                     style={{
-                      // Apply dynamicOutStyle only if animating out
-                      ... (shouldAnimateOut ? card.dynamicOutStyle : {}),
+                      ...(shouldAnimateOut ? card.dynamicOutStyle : {}),
                       '--card-animation-delay': shouldAnimateIn ? `${index * 0.05}s` : '0s'
                     }}
                     ref={el => cardRefs.current[card.id] = el}
@@ -477,40 +419,55 @@ export default function App() {
                       value={card.value}
                       selected={selected.includes(card.id)}
                       onClick={
-                        // Disable click if animating, or if it's a placeholder, or if it's invisible
-                        !isReshuffling && !newCardsAnimatingIn && !card.isPlaceholder && !card.invisible ? () => handleCardClick(card.id) : undefined
+                        !isReshuffling && !newCardsAnimatingIn && !card.isPlaceholder && !card.invisible && !flyingCardInfo ? () => handleCardClick(card.id) : undefined
                       }
                       isAbstract={card.isAbstract}
-                      invisible={card.invisible} // Pass the invisible prop from App.js state
-                      isPlaceholder={card.isPlaceholder} // Pass the isPlaceholder prop from App.js state
-                      // Control flipping:
-                      // During new card animation in, use card.isFlipped (which will be true for back)
-                      // When not animating, use !handCardsFlipped for the final reveal
-                      // If it's a placeholder, it should not flip
+                      invisible={card.invisible && !isNewlyMerged} // A newly merged card should not be invisible even if its slot was
+                      isPlaceholder={card.isPlaceholder}
                       isFlipped={card.isPlaceholder ? false : (newCardsAnimatingIn ? card.isFlipped : (!isReshuffling && !newCardsAnimatingIn ? !handCardsFlipped : card.isFlipped))}
                     />
                   </div>
                 );
               })}
+              
+              {/* Flying card for merge animation */}
+              {flyingCardInfo && (
+                <div
+                  style={{
+                    position: 'fixed', // Uses viewport for positioning
+                    left: `${flyingCardInfo.initialLeft}px`,
+                    top: `${flyingCardInfo.initialTop}px`,
+                    width: `${flyingCardInfo.width}px`,
+                    height: `${flyingCardInfo.height}px`,
+                    zIndex: 1050, // High z-index to be above other elements
+                    '--translateX': `${flyingCardInfo.translateX}px`,
+                    '--translateY': `${flyingCardInfo.translateY}px`,
+                  }}
+                  className="flying-merge-card" // Will have animation
+                >
+                  <Card // Render the visual representation of the flying card
+                    value={flyingCardInfo.value}
+                    isAbstract={flyingCardInfo.isAbstract}
+                    isFlipped={false} // Should be face up
+                    // Ensure no selection styles or click handlers apply
+                  />
+                </div>
+              )}
             </div>
           </div>
         </>
       )}
 
-
       <div className="operators my-4 d-flex justify-content-center">
         {[
-          { op: "+", src: "./images/addition.png" },
-          { op: "-", src: "./images/subtraction.png" },
-          { op: "×", src: "./images/multiplication.png" },
-          { op: "÷", src: "./images/division.png" },
+          { op: "+", src: "./images/addition.png" }, { op: "-", src: "./images/subtraction.png" },
+          { op: "×", src: "./images/multiplication.png" }, { op: "÷", src: "./images/division.png" },
         ].map(({ op, src }) => (
           <button
             key={op}
-            className={`operator-button ${selectedOperator === op ? 'selected-operator' : ''
-              }`}
+            className={`operator-button ${selectedOperator === op ? 'selected-operator' : ''}`}
             onClick={() => handleOperatorSelect(op)}
-            disabled={isReshuffling || newCardsAnimatingIn || !gameStarted} // Disable if game not started
+            disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo || selected.length !== 2}
           >
             <img src={src} alt={op} className="operator-img" />
           </button>
@@ -518,9 +475,9 @@ export default function App() {
       </div>
 
       <div className="controls d-flex justify-content-center gap-2">
-        <button className="btn btn-info" onClick={handleUndo} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || history.length === 0}>Undo</button>
-        <button className="btn btn-warning" onClick={handleReset} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || history.length === 0}>Reset</button>
-        <button className="btn btn-success" onClick={() => startNewRound(true)} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}>Reshuffle</button>
+        <button className="btn btn-info" onClick={handleUndo} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo || history.length === 0}>Undo</button>
+        <button className="btn btn-warning" onClick={handleReset} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo || history.length === 0 && originalCards.length === 0}>Reset</button>
+        <button className="btn btn-success" onClick={() => startNewRound(true)} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo}>Reshuffle</button>
       </div>
     </div>
   );
