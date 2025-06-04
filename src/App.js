@@ -476,9 +476,9 @@ export default function App() {
       </div>
 
       <div className="controls d-flex justify-content-center gap-2">
-        <button className="btn btn-info" onClick={handleUndo} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo || history.length === 0}>Undo</button>
-        <button className="btn btn-warning" onClick={handleReset} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo || history.length === 0 && originalCards.length === 0}>Reset</button>
-        <button className="btn btn-success" onClick={() => startNewRound(true)} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo}>Reshuffle</button>
+        <button className="btn btn-info" onClick={handleUndo} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || history.length === 0}>Undo</button>
+        <button className="btn btn-warning" onClick={handleReset} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || history.length === 0}>Reset</button>
+        <button className="btn btn-success" onClick={() => startNewRound(true)} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}>Reshuffle</button>
       </div>
     </div>
   );
