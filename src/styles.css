@@ -297,7 +297,7 @@ button {
 
 /* For the card that flies from card B's slot to card A's slot and disappears */
 .flying-merge-card {
-  animation: flyToTargetAndFade 0.7s forwards ease-in-out;
+  animation: flyToTargetAndFade 0.3s forwards ease-in-out;
   /* The Card component inside should not have extra margins affecting its container size */
 }
 
@@ -321,7 +321,7 @@ button {
 /* This class is applied to the .reshuffle-card-container */
 .reshuffle-card-container.newly-merged-card-appear-container {
   /* The animation will affect the container, and thus the Card component inside */
-  animation: newlyMergedAppear 0.5s forwards ease-out;
+  animation: newlyMergedAppear 0.3s forwards ease-out;
   animation-delay: 0.2s; /* Start appearing as the other card is half-way or finishing its travel */
   /* Ensure it's visible if it was part of an invisible placeholder before */
   opacity: 0; /* Start transparent, animation will make it opaque */
@@ -329,7 +329,7 @@ button {
 
 @keyframes newlyMergedAppear {
   0% {
-    transform: scale(0.6);
+    transform: scale(1.6);
     opacity: 0;
   }
   100% {
