@@ -189,6 +189,7 @@ export default function App() {
     setCards(finalCardsState);
     // playSound(cardRevealSound); // Already played for target reveal
     setOriginalCards(newGeneratedCards);
+    playSound(cardRevealSound);
     setSelected([]);
     setSelectedOperator(null);
     setHistory([]);
