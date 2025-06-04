@@ -187,7 +187,6 @@ export default function App() {
     });
 
     setCards(finalCardsState);
-    // playSound(cardRevealSound); // Already played for target reveal
     setOriginalCards(newGeneratedCards);
     playSound(cardRevealSound);
     setSelected([]);
@@ -217,7 +216,6 @@ export default function App() {
       startNewRound(true);
     }
   }, [gameStarted, userInteracted]);
-  // startNewRound is memoized via its own internal check for isReshuffling
 
   useEffect(() => {
     if (!isReshuffling && !newCardsAnimatingIn && gameStarted && !flyingCardInfo) {
@@ -232,31 +230,34 @@ export default function App() {
     }
   }, [cards, target, autoReshuffle, userInteracted, soundsOn, isReshuffling, newCardsAnimatingIn, gameStarted, flyingCardInfo]);
 
+  // This effect will run whenever `selected` or `selectedOperator` changes.
+  // It ensures `performOperation` is called as soon as conditions are met.
+  useEffect(() => {
+    if (selected.length === 2 && selectedOperator) {
+      performOperation(selected, selectedOperator);
+    }
+  }, [selected, selectedOperator]); // Depend on selected and selectedOperator
+
   const handleCardClick = (id) => {
     if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo) return;
 
     const clickedCard = cards.find(c => c.id === id);
     if (!clickedCard || clickedCard.isPlaceholder || clickedCard.invisible) return;
 
-    if (selected.includes(id)) {
-      setSelected(selected.filter((sid) => sid !== id));
-    } else if (selected.length < 2) {
-      const newSelected = [...selected, id];
-      setSelected(newSelected);
-      if (newSelected.length === 2 && selectedOperator) {
-        performOperation(newSelected, selectedOperator);
+    setSelected(prevSelected => {
+      if (prevSelected.includes(id)) {
+        return prevSelected.filter((sid) => sid !== id);
+      } else if (prevSelected.length < 2) {
+        return [...prevSelected, id];
       }
-    }
+      return prevSelected; // If already two cards selected, don't add more
+    });
   };
 
   const handleOperatorSelect = (op) => {
     if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo) return;
 
-    const newOp = selectedOperator === op ? null : op;
-    setSelectedOperator(newOp);
-    if (selected.length === 2 && newOp) {
-      performOperation(selected, newOp);
-    }
+    setSelectedOperator(prevOp => prevOp === op ? null : op);
   };
 
   const performOperation = ([aId, bId], operator) => {
@@ -280,7 +281,7 @@ export default function App() {
     if (cardBRef && cardARef) {
       const bRect = cardBRef.getBoundingClientRect();
       const aRect = cardARef.getBoundingClientRect();
-      
+
       const targetCenterX = aRect.left + aRect.width / 2;
       const targetCenterY = aRect.top + aRect.height / 2;
       const sourceCenterX = bRect.left + bRect.width / 2;
@@ -395,11 +396,11 @@ export default function App() {
           </div>
 
           <div className="container">
-            <div className="row justify-content-center gx-3 gy-3 position-relative"> {/* Added position-relative for flying card context if needed, though fixed is used */}
+            <div className="row justify-content-center gx-3 gy-3 position-relative">
               {(isReshuffling || newCardsAnimatingIn ? cardsToRender : cards).map((card, index) => {
                 const shouldAnimateOut = isReshuffling && !newCardsAnimatingIn && !card.isPlaceholder && !card.invisible;
                 const shouldAnimateIn = newCardsAnimatingIn && !card.isPlaceholder;
-                const isNewlyMerged = card.isNewlyMerged; // Check for merge animation flag
+                const isNewlyMerged = card.isNewlyMerged;
 
                 return (
                   <div
@@ -423,34 +424,33 @@ export default function App() {
                         !isReshuffling && !newCardsAnimatingIn && !card.isPlaceholder && !card.invisible && !flyingCardInfo ? () => handleCardClick(card.id) : undefined
                       }
                       isAbstract={card.isAbstract}
-                      invisible={card.invisible && !isNewlyMerged} // A newly merged card should not be invisible even if its slot was
+                      invisible={card.invisible && !isNewlyMerged}
                       isPlaceholder={card.isPlaceholder}
                       isFlipped={card.isPlaceholder ? false : (newCardsAnimatingIn ? card.isFlipped : (!isReshuffling && !newCardsAnimatingIn ? !handCardsFlipped : card.isFlipped))}
                     />
                   </div>
                 );
               })}
-              
+
               {/* Flying card for merge animation */}
               {flyingCardInfo && (
                 <div
                   style={{
-                    position: 'fixed', // Uses viewport for positioning
+                    position: 'fixed',
                     left: `${flyingCardInfo.initialLeft}px`,
                     top: `${flyingCardInfo.initialTop}px`,
                     width: `${flyingCardInfo.width}px`,
                     height: `${flyingCardInfo.height}px`,
-                    zIndex: 1050, // High z-index to be above other elements
+                    zIndex: 1050,
                     '--translateX': `${flyingCardInfo.translateX}px`,
                     '--translateY': `${flyingCardInfo.translateY}px`,
                   }}
-                  className="flying-merge-card" // Will have animation
+                  className="flying-merge-card"
                 >
-                  <Card // Render the visual representation of the flying card
+                  <Card
                     value={flyingCardInfo.value}
                     isAbstract={flyingCardInfo.isAbstract}
-                    isFlipped={false} // Should be face up
-                    // Ensure no selection styles or click handlers apply
+                    isFlipped={false}
                   />
                 </div>
               )}
@@ -468,7 +468,7 @@ export default function App() {
             key={op}
             className={`operator-button ${selectedOperator === op ? 'selected-operator' : ''}`}
             onClick={() => handleOperatorSelect(op)}
-            disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo || selected.length !== 2}
+            disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo}
           >
             <img src={src} alt={op} className="operator-img" />
           </button>
