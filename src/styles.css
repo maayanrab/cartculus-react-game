@@ -322,7 +322,7 @@ button {
 .reshuffle-card-container.newly-merged-card-appear-container {
   /* The animation will affect the container, and thus the Card component inside */
   animation: newlyMergedAppear 0.3s forwards ease-out;
-  animation-delay: 0.2s; /* Start appearing as the other card is half-way or finishing its travel */
+  /* animation-delay: 0.2s; /* Start appearing as the other card is half-way or finishing its travel */
   /* Ensure it's visible if it was part of an invisible placeholder before */
   opacity: 0; /* Start transparent, animation will make it opaque */
 }
