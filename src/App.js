@@ -221,8 +221,8 @@ export default function App() {
     if (!isReshuffling && !newCardsAnimatingIn && gameStarted && !flyingCardInfo) {
       const visibleCards = cards.filter((card) => !card.invisible && !card.isPlaceholder);
       if (visibleCards.length === 1 && visibleCards[0].value === target && target !== null) {
-        confetti();
-        playSound(successSound);
+        // confetti();
+        // playSound(successSound);
         if (autoReshuffle) {
           setTimeout(() => startNewRound(true), 2000);
         }
@@ -319,6 +319,17 @@ export default function App() {
     playSound(operatorSound);
     setSelected([]);
     setSelectedOperator(null);
+
+    // --- NEW LOGIC FOR WIN CONDITION CHECK DURING MERGE ---
+    const newCardsStateAfterMerge = updatedCards.filter(c => c.id !== bId && !c.isPlaceholder && !c.invisible); // Simulate the state after B is gone
+    const potentialWinningCard = newCardsStateAfterMerge.find(c => c.id === newCardResultId);
+
+    if (potentialWinningCard && newCardsStateAfterMerge.length === 1 && potentialWinningCard.value === target) {
+        // Trigger confetti and sound immediately for a win
+        confetti();
+        playSound(successSound);
+    }
+    // --- END NEW LOGIC ---
 
     setTimeout(() => {
       setFlyingCardInfo(null);
