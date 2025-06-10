@@ -373,14 +373,14 @@ button {
 
 .top-card-label {
   /* Increase top margin for more clearance */
-  top: -5px;
+  top: 8px;
   left: 50%;
   transform: translateX(-50%) translateX(-31px);
 }
 
 .bottom-card-label {
   /* Increase bottom margin for more clearance */
-  bottom: -5px;
+  bottom: 8px;
   left: 50%;
   transform: translateX(-50%) translateX(31px) rotate(180deg);
 }

@@ -31,7 +31,7 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
   const MAIN_LABEL_HORIZONTAL_BUFFER = 10;
   // A smaller buffer for corner labels as they might have less padding
   // Adjust based on your specific top/bottom label padding/margins
-  const CORNER_LABEL_HORIZONTAL_BUFFER = 5;
+  const CORNER_LABEL_HORIZONTAL_BUFFER = 20;
 
   // Generic function to calculate font size
   const calculateFontSize = useCallback((labelElement, containerWidth, maxFontSize, minFontSize, horizontalBuffer) => {
