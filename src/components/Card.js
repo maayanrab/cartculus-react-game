@@ -71,7 +71,7 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
       setCornerLabelFontSize(
         calculateFontSize(
           topLabelRef.current, // Use topLabelRef for calculation, as it's representative
-          cardContentWidth / 3, // Assuming corner labels occupy roughly half the card width
+          cardContentWidth / 4, // Assuming corner labels occupy roughly fourth of the card width
           MAX_CORNER_FONT_SIZE,
           MIN_CORNER_FONT_SIZE,
           CORNER_LABEL_HORIZONTAL_BUFFER
