@@ -24,14 +24,14 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
   const MAX_MAIN_FONT_SIZE = 88;
   const MIN_MAIN_FONT_SIZE = 20;
   const MAX_CORNER_FONT_SIZE = 24; // Max font size for corner labels
-  const MIN_CORNER_FONT_SIZE = 10; // Min font size for corner labels
+  const MIN_CORNER_FONT_SIZE = 0; // Min font size for corner labels
 
   // Adjust this buffer based on your padding (5px padding on each side = 10px buffer)
   // and any desired extra space from the edges.
   const MAIN_LABEL_HORIZONTAL_BUFFER = 10;
   // A smaller buffer for corner labels as they might have less padding
   // Adjust based on your specific top/bottom label padding/margins
-  const CORNER_LABEL_HORIZONTAL_BUFFER = 20;
+  const CORNER_LABEL_HORIZONTAL_BUFFER = 5;
 
   // Generic function to calculate font size
   const calculateFontSize = useCallback((labelElement, containerWidth, maxFontSize, minFontSize, horizontalBuffer) => {
@@ -71,7 +71,7 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
       setCornerLabelFontSize(
         calculateFontSize(
           topLabelRef.current, // Use topLabelRef for calculation, as it's representative
-          cardContentWidth / 2, // Assuming corner labels occupy roughly half the card width
+          cardContentWidth / 3, // Assuming corner labels occupy roughly half the card width
           MAX_CORNER_FONT_SIZE,
           MIN_CORNER_FONT_SIZE,
           CORNER_LABEL_HORIZONTAL_BUFFER
