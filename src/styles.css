@@ -346,7 +346,6 @@ button {
   margin: 0;
 }
 
-/* Main label styling */
 .card-label {
   position: absolute;
   top: 50%;
@@ -361,6 +360,32 @@ button {
 }
 
 
+/* Combined rules for all labels (common properties) */
+.card-label,
+.top-card-label,
+.bottom-card-label {
+  position: absolute; /* Takes the element out of the normal document flow */
+  z-index: 2; /* Ensures text is on top of the image */
+  font-family: 'LibreBaskerville-Regular'; /* Apply common font family */
+  white-space: nowrap; /* CRITICAL for JS width measurement accuracy */
+}
+
+
+.top-card-label {
+  /* Increase top margin for more clearance */
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%) translateX(-31px);
+}
+
+.bottom-card-label {
+  /* Increase bottom margin for more clearance */
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%) translateX(31px) rotate(180deg);
+}
+
+
 .image-container {
   position: relative; /* This makes it the reference for absolutely positioned children */
   display: inline-block; /* Or block, depending on your layout needs */
@@ -370,33 +395,4 @@ button {
   display: block; /* Removes extra space below the image */
   width: 100%; /* Or a specific width */
   height: auto; /* Maintain aspect ratio */
-}
-
-/* Combined rules for all labels (if any common properties) */
-.card-label,
-.top-card-label,
-.bottom-card-label {
-  color: red;
-  position: absolute; /* Takes the element out of the normal document flow */
-  /* padding: 5px; - This is now specific to .card-label for clarity */
-  z-index: 2; /* Ensures text is on top of the image */
-}
-
-
-.top-card-label {
-  top: 0px; /* Fine-tune vertical offset as needed */
-  left: 50%;
-  transform: translateX(-50%) translateX(-29px) translateY(-10px);
-  font-size: 24px;
-  font-family: 'LibreBaskerville-Regular';
-  white-space: nowrap; /* Good practice for single-line numbers */
-}
-
-.bottom-card-label {
-  bottom: 0px; /* Fine-tune vertical offset as needed */
-  left: 50%; /* Start by positioning its left edge at the horizontal center of the container */
-  transform: translateX(-50%) translateX(29px) translateY(10px) rotate(180deg);
-  font-size: 24px;
-  font-family: 'LibreBaskerville-Regular';
-  white-space: nowrap; /* Good practice for single-line numbers */
 }

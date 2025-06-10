@@ -1,4 +1,5 @@
-import React, { useRef, useLayoutEffect, useState } from 'react';
+// Card.js
+import React, { useRef, useLayoutEffect, useState, useCallback } from 'react';
 
 export default function Card({ value, onClick, selected, isAbstract, invisible, isFlipped = false, isTarget = false, isPlaceholder = false }) {
   const formattedValue =
@@ -11,38 +12,73 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
   const backImagePath = './images/card_back.png';
 
   // Refs for dynamic font sizing
-  const labelRef = useRef(null);
+  const mainLabelRef = useRef(null);
+  const topLabelRef = useRef(null);
+  const bottomLabelRef = useRef(null);
   const imageContainerRef = useRef(null);
 
-  // State to hold the dynamically calculated font size for the main label
-  const [mainLabelFontSize, setMainLabelFontSize] = useState(88); // Initial max font size
+  // State to hold the dynamically calculated font size for the labels
+  const [mainLabelFontSize, setMainLabelFontSize] = useState(88);
+  const [cornerLabelFontSize, setCornerLabelFontSize] = useState(24); // Shared for top and bottom
 
-  const MAX_FONT_SIZE = 88; // Your maximum desired font size
-  const MIN_FONT_SIZE = 20; // The smallest you want the font to get
+  const MAX_MAIN_FONT_SIZE = 88;
+  const MIN_MAIN_FONT_SIZE = 20;
+  const MAX_CORNER_FONT_SIZE = 24; // Max font size for corner labels
+  const MIN_CORNER_FONT_SIZE = 10; // Min font size for corner labels
+
   // Adjust this buffer based on your padding (5px padding on each side = 10px buffer)
   // and any desired extra space from the edges.
-  const HORIZONTAL_BUFFER = 10; // e.g., 5px padding on left + 5px padding on right
+  const MAIN_LABEL_HORIZONTAL_BUFFER = 10;
+  // A smaller buffer for corner labels as they might have less padding
+  // Adjust based on your specific top/bottom label padding/margins
+  const CORNER_LABEL_HORIZONTAL_BUFFER = 5;
+
+  // Generic function to calculate font size
+  const calculateFontSize = useCallback((labelElement, containerWidth, maxFontSize, minFontSize, horizontalBuffer) => {
+    if (!labelElement || !containerWidth) return maxFontSize;
+
+    // Temporarily set a large font size to measure the intrinsic width
+    labelElement.style.fontSize = `${maxFontSize}px`;
+    const currentTextWidth = labelElement.scrollWidth;
+
+    const availableWidth = containerWidth - horizontalBuffer;
+
+    if (currentTextWidth > availableWidth) {
+      const newFontSize = (availableWidth / currentTextWidth) * maxFontSize;
+      return Math.max(minFontSize, newFontSize);
+    } else {
+      return maxFontSize;
+    }
+  }, []);
 
   useLayoutEffect(() => {
-    if (labelRef.current && imageContainerRef.current) {
-      const cardContentWidth = imageContainerRef.current.clientWidth; // Get the effective width of the card's content area
-      const availableWidth = cardContentWidth - HORIZONTAL_BUFFER;
+    if (imageContainerRef.current) {
+      const cardContentWidth = imageContainerRef.current.clientWidth;
 
-      // Temporarily set a large font size to measure the intrinsic width if it overflows
-      // This ensures scrollWidth reflects the true width without current constraints
-      labelRef.current.style.fontSize = `${MAX_FONT_SIZE}px`;
-      const currentTextWidth = labelRef.current.scrollWidth;
+      // Calculate font size for main label
+      setMainLabelFontSize(
+        calculateFontSize(
+          mainLabelRef.current,
+          cardContentWidth,
+          MAX_MAIN_FONT_SIZE,
+          MIN_MAIN_FONT_SIZE,
+          MAIN_LABEL_HORIZONTAL_BUFFER
+        )
+      );
 
-      if (currentTextWidth > availableWidth) {
-        // Text is too wide, calculate new font size
-        const newFontSize = (availableWidth / currentTextWidth) * MAX_FONT_SIZE;
-        setMainLabelFontSize(Math.max(MIN_FONT_SIZE, newFontSize)); // Ensure it doesn't go below min
-      } else {
-        // Text fits or is smaller than available space, set to max font size
-        setMainLabelFontSize(MAX_FONT_SIZE);
-      }
+      // Calculate font size for corner labels (top and bottom)
+      // They use the same logic and should have the same calculated size
+      setCornerLabelFontSize(
+        calculateFontSize(
+          topLabelRef.current, // Use topLabelRef for calculation, as it's representative
+          cardContentWidth / 2, // Assuming corner labels occupy roughly half the card width
+          MAX_CORNER_FONT_SIZE,
+          MIN_CORNER_FONT_SIZE,
+          CORNER_LABEL_HORIZONTAL_BUFFER
+        )
+      );
     }
-  }, [formattedValue]); // Re-run this effect whenever the number (formattedValue) changes
+  }, [formattedValue, calculateFontSize]); // Re-run whenever the number changes or calc function is updated
 
   // A card is visually hidden but occupies space if it's explicitly a placeholder
   // or if the game logic marks it as invisible.
@@ -68,14 +104,30 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
             {isAbstract && (
               <span
                 className="card-label"
-                ref={labelRef} // Apply ref to the label span
+                ref={mainLabelRef} // Apply ref to the main label span
                 style={{ fontSize: `${mainLabelFontSize}px` }} // Dynamically set font size
               >
                 {formattedValue}
               </span>
             )}
-            {isAbstract && <span className="top-card-label">{formattedValue}</span>}
-            {isAbstract && <span className="bottom-card-label">{formattedValue}</span>}
+            {isAbstract && (
+              <span
+                className="top-card-label"
+                ref={topLabelRef} // Apply ref to the top label span
+                style={{ fontSize: `${cornerLabelFontSize}px` }} // Dynamically set font size
+              >
+                {formattedValue}
+              </span>
+            )}
+            {isAbstract && (
+              <span
+                className="bottom-card-label"
+                ref={bottomLabelRef} // Apply ref to the bottom label span
+                style={{ fontSize: `${cornerLabelFontSize}px` }} // Dynamically set font size
+              >
+                {formattedValue}
+              </span>
+            )}
           </div>
         </div>
 
