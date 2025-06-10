@@ -24,7 +24,7 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
   const MAX_MAIN_FONT_SIZE = 88;
   const MIN_MAIN_FONT_SIZE = 20;
   const MAX_CORNER_FONT_SIZE = 24; // Max font size for corner labels
-  const MIN_CORNER_FONT_SIZE = 0; // Min font size for corner labels
+  const MIN_CORNER_FONT_SIZE = 10; // Min font size for corner labels
 
   // Adjust this buffer based on your padding (5px padding on each side = 10px buffer)
   // and any desired extra space from the edges.
