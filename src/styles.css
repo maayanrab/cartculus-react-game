@@ -354,11 +354,11 @@ button {
 
 .card-label-top {
   bottom: 90px;
-  left: 0%;
+  left: 4px;
 }
 
 .card-label-bottom {
   top: 90px;
-  right: 0%;
+  right: 4px;
   transform: rotate(180deg); /* Rotate for bottom label */
 }
