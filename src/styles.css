@@ -343,12 +343,6 @@ button {
   margin: 0; 
 }
 
-.card-label {
-  font-size: 88px; /* Adjusted for larger target cards */
-  /* font-size: clamp(30px, 88px, 4.5vw); /* Min 30px, ideal 88px, max 4.5vw */
-  font-family: 'LibreBaskerville-Regular';
-}
-
 .image-container {
   position: relative; /* This makes it the reference for absolutely positioned children */
   display: inline-block; /* Or block, depending on your layout needs */
@@ -369,7 +363,8 @@ button {
 }
 
 .card-label {
-  /* Default position, e.g., centered or top-left */
+  font-size: 88px;
+  font-family: 'LibreBaskerville-Regular';
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%); /* Centers the text */
