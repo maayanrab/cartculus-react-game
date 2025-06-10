@@ -346,19 +346,12 @@ button {
   margin: 0;
 }
 
-/* REMOVED fixed font-size for .card-label as it's now JS controlled */
-/* .card-label {
-  font-size: 88px;
-  font-family: 'LibreBaskerville-Regular';
-} */
-
 /* Main label styling */
 .card-label {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-weight: bold;
   font-family: 'LibreBaskerville-Regular';
   color: black; /* Explicitly set color here */
   z-index: 2;
@@ -383,6 +376,7 @@ button {
 .card-label,
 .top-card-label,
 .bottom-card-label {
+  color: red;
   position: absolute; /* Takes the element out of the normal document flow */
   /* padding: 5px; - This is now specific to .card-label for clarity */
   z-index: 2; /* Ensures text is on top of the image */
@@ -395,7 +389,6 @@ button {
   transform: translateX(-50%) translateX(-29px) translateY(-10px);
   font-size: 24px;
   font-family: 'LibreBaskerville-Regular';
-  color: red; /* Explicitly set color */
   white-space: nowrap; /* Good practice for single-line numbers */
 }
 
@@ -405,6 +398,5 @@ button {
   transform: translateX(-50%) translateX(29px) translateY(10px) rotate(180deg);
   font-size: 24px;
   font-family: 'LibreBaskerville-Regular';
-  color: red; /* Explicitly set color */
   white-space: nowrap; /* Good practice for single-line numbers */
 }
