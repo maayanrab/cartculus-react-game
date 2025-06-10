@@ -342,3 +342,52 @@ button {
 .flying-merge-card .card {
   margin: 0; 
 }
+
+.card-label {
+  font-size: 88px; /* Adjusted for larger target cards */
+  font-family: 'LibreBaskerville-Regular';
+}
+
+/* Gemini: */
+
+.image-container {
+  position: relative; /* This makes it the reference for absolutely positioned children */
+  display: inline-block; /* Or block, depending on your layout needs */
+}
+
+.image-container img {
+  display: block; /* Removes extra space below the image */
+  width: 100%; /* Or a specific width */
+  height: auto; /* Maintain aspect ratio */
+}
+
+.card-label,
+.top-card-label,
+.bottom-card-label {
+  position: absolute; /* Takes the element out of the normal document flow */
+  padding: 5px;
+  z-index: 2; /* Ensures text is on top of the image (image will likely be z-index: 1 by default) */
+}
+
+.card-label {
+  /* Default position, e.g., centered or top-left */
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%); /* Centers the text */
+}
+
+.top-card-label {
+  top: 0px; /* Fine-tune vertical offset as needed */
+  left: 50%;
+  transform: translateX(-50%) translateX(-29px) translateY(-10px);
+  font-size: 24px;
+  font-family: 'LibreBaskerville-Regular';
+}
+
+.bottom-card-label {
+  bottom: 0px; /* Fine-tune vertical offset as needed */
+  left: 50%; /* Start by positioning its left edge at the horizontal center of the container */
+  transform: translateX(-50%) translateX(29px) translateY(10px) rotate(180deg);
+  font-size: 24px;
+  font-family: 'LibreBaskerville-Regular';
+}

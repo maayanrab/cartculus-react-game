@@ -30,6 +30,8 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
         <div className="card-face card-front">
           <img src={frontImagePath} alt={value} />
           {isAbstract && <span className="card-label">{formattedValue}</span>}
+          {isAbstract && <span className="top-card-label">{formattedValue}</span>}
+          {isAbstract && <span className="bottom-card-label">{formattedValue}</span>}
         </div>
 
         {/* Back of the card */}
