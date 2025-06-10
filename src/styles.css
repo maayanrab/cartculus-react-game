@@ -351,7 +351,7 @@ button {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-family: 'LibreBaskerville-Regular';
+  font-family: 'LibreBaskerville';
   color: black; /* Explicitly set color here */
   z-index: 2;
   backface-visibility: hidden;
