@@ -5,8 +5,8 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
     typeof value === 'number' ? parseFloat(value.toFixed(3)) : value;
 
   const frontImagePath = isAbstract
-    ? './images/cardabstract.png'
-    : `./images/card${value}.png`;
+    ? './images/card_abstract.png'
+    : `./images/card_${value}.png`;
 
   const backImagePath = './images/card_back.png';
 
@@ -29,7 +29,15 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
         {/* Front of the card */}
         <div className="card-face card-front">
           <img src={frontImagePath} alt={value} />
-          {isAbstract && <span className="card-label">{formattedValue}</span>}
+          {isAbstract && 
+          <span className="card-label">{formattedValue}</span>
+          }
+          {isAbstract && 
+          <span className="card-label-top corner-label">{formattedValue}</span>
+          }
+          {isAbstract && 
+          <span className="card-label-bottom corner-label">{formattedValue}</span>
+          }
         </div>
 
         {/* Back of the card */}

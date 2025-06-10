@@ -88,11 +88,14 @@ body.scrolling-disabled {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-weight: bold;
-  font-size: 20px;
+  /* font-weight: bold; */
+  /* font-size: 20px; */
+  font-family: "./fonts/LibreBaskerville-Regular.ttf", serif; /* Use a serif font for the label */
   color: black;
   z-index: 2; /* Ensure label is above the card image */
   backface-visibility: hidden; /* Hide label when front face is flipped away */
+  font-size: 44px;
+  text-align: center;
 }
 
 
@@ -341,4 +344,21 @@ button {
 /* Ensure the card inside the .flying-merge-card div has no margin if .card class adds it globally */
 .flying-merge-card .card {
   margin: 0; 
+}
+
+.corner-label {
+  position: absolute;
+  font-size: 22px;
+  font-family: "./fonts/LibreBaskerville-Regular.ttf", serif; /* Use a serif font for the label */
+}
+
+.card-label-top {
+  bottom: 90px;
+  left: 0%;
+}
+
+.card-label-bottom {
+  top: 90px;
+  right: 0%;
+  transform: rotate(180deg); /* Rotate for bottom label */
 }
