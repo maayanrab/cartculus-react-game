@@ -6,8 +6,8 @@ export default function Card({ value, onClick, selected, isAbstract, invisible, 
     typeof value === 'number' ? parseFloat(value.toFixed(3)) : value;
 
   const frontImagePath = isAbstract
-    ? './images/cardabstract.png'
-    : `./images/card${value}.png`;
+    ? './images/card_abstract.png'
+    : `./images/card_${value}.png`;
 
   const backImagePath = './images/card_back.png';
 
