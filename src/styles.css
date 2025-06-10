@@ -345,6 +345,7 @@ button {
 
 .card-label {
   font-size: 88px; /* Adjusted for larger target cards */
+  /* font-size: clamp(30px, 88px, 4.5vw); /* Min 30px, ideal 88px, max 4.5vw */
   font-family: 'LibreBaskerville-Regular';
 }
 
