@@ -348,8 +348,6 @@ button {
   font-family: 'LibreBaskerville-Regular';
 }
 
-/* Gemini: */
-
 .image-container {
   position: relative; /* This makes it the reference for absolutely positioned children */
   display: inline-block; /* Or block, depending on your layout needs */
