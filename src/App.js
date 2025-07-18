@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import Card from './components/Card';
-import { generateCardsAndTarget, operate } from './gameLogic';
-import confetti from 'canvas-confetti';
-import 'bootstrap/dist/css/bootstrap.min.css';
-import './styles.css';
+import React, { useState, useEffect, useRef } from "react";
+import Card from "./components/Card";
+import { generateCardsAndTarget, operate } from "./gameLogic";
+import confetti from "canvas-confetti";
+import "bootstrap/dist/css/bootstrap.min.css";
+import "./styles.css";
 
 // Declare Audio objects globally.
 let undoSound;
@@ -43,18 +43,26 @@ export default function App() {
   useEffect(() => {
     const handleInitialInteraction = () => {
       if (!userInteracted) {
-        undoSound = new Audio('./sounds/undo.wav');
-        operatorSound = new Audio('./sounds/operator.wav');
-        successSound = new Audio('./sounds/success.wav');
-        reshuffleSound = new Audio('./sounds/reshuffle.wav');
-        cardRevealSound = new Audio('./sounds/card_reveal.wav');
-        discardHandSound = new Audio('./sounds/discard_hand.wav');
+        undoSound = new Audio("./sounds/undo.wav");
+        operatorSound = new Audio("./sounds/operator.wav");
+        successSound = new Audio("./sounds/success.wav");
+        reshuffleSound = new Audio("./sounds/reshuffle.wav");
+        cardRevealSound = new Audio("./sounds/card_reveal.wav");
+        discardHandSound = new Audio("./sounds/discard_hand.wav");
 
-        const soundsToLoad = [undoSound, operatorSound, successSound, reshuffleSound, cardRevealSound, discardHandSound];
-        soundsToLoad.forEach(sound => {
+        const soundsToLoad = [
+          undoSound,
+          operatorSound,
+          successSound,
+          reshuffleSound,
+          cardRevealSound,
+          discardHandSound,
+        ];
+        soundsToLoad.forEach((sound) => {
           if (sound) {
             sound.load();
-            sound.onerror = () => console.error(`Error loading sound: ${sound.src}`);
+            sound.onerror = () =>
+              console.error(`Error loading sound: ${sound.src}`);
           }
         });
 
@@ -63,32 +71,32 @@ export default function App() {
           setGameStarted(true);
         }
 
-        document.removeEventListener('click', handleInitialInteraction);
-        document.removeEventListener('keydown', handleInitialInteraction);
+        document.removeEventListener("click", handleInitialInteraction);
+        document.removeEventListener("keydown", handleInitialInteraction);
       }
     };
 
     if (!userInteracted) {
-      document.addEventListener('click', handleInitialInteraction);
-      document.addEventListener('keydown', handleInitialInteraction);
+      document.addEventListener("click", handleInitialInteraction);
+      document.addEventListener("keydown", handleInitialInteraction);
     }
 
     return () => {
-      document.removeEventListener('click', handleInitialInteraction);
-      document.removeEventListener('keydown', handleInitialInteraction);
+      document.removeEventListener("click", handleInitialInteraction);
+      document.removeEventListener("keydown", handleInitialInteraction);
     };
   }, [userInteracted, gameStarted]);
 
   const playSound = (audio) => {
     if (userInteracted && audio && soundsOn) {
       audio.currentTime = 0;
-      audio.play().catch(e => console.error("Error playing sound:", e));
+      audio.play().catch((e) => console.error("Error playing sound:", e));
     }
   };
 
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  const startNewRound = async (playInitialDiscardSound = true) => {
+  const startNewRound = async (playInitialDiscardSound = true, presetCards = null, presetTarget = null) => {
     if (isReshuffling || flyingCardInfo) return;
 
     if (playInitialDiscardSound) {
@@ -99,37 +107,47 @@ export default function App() {
     setNewCardsAnimatingIn(false);
     setHandCardsFlipped(false);
     setTargetCardFlipped(false);
-    document.body.classList.add('scrolling-disabled');
+    document.body.classList.add("scrolling-disabled");
 
-    const currentlyVisibleCards = cards.filter(card => !card.invisible && !card.isPlaceholder);
+    const currentlyVisibleCards = cards.filter(
+      (card) => !card.invisible && !card.isPlaceholder
+    );
     const cardPositions = new Map();
-    currentlyVisibleCards.forEach(card => {
+    currentlyVisibleCards.forEach((card) => {
       const ref = cardRefs.current[card.id];
       if (ref) {
         const rect = ref.getBoundingClientRect();
         cardPositions.set(card.id, {
           x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2
+          y: rect.top + rect.height / 2,
         });
       }
     });
 
-    setCardsToRender(cards.map(card => ({
-      ...card,
-      dynamicOutStyle: (!card.invisible && !card.isPlaceholder) ? getCardExitStyle(cardPositions.get(card.id), centerRef.current) : {},
-      isTarget: false,
-      invisible: card.isPlaceholder ? true : card.invisible
-    })));
+    setCardsToRender(
+      cards.map((card) => ({
+        ...card,
+        dynamicOutStyle:
+          !card.invisible && !card.isPlaceholder
+            ? getCardExitStyle(cardPositions.get(card.id), centerRef.current)
+            : {},
+        isTarget: false,
+        invisible: card.isPlaceholder ? true : card.invisible,
+      }))
+    );
 
     if (currentlyVisibleCards.length > 0) {
       await sleep(700);
     }
 
-    const { cards: newGeneratedCards, target: newTarget } = generateCardsAndTarget();
+    const { cards: newGeneratedCards, target: newTarget } =
+      generateCardsAndTarget(presetCards, presetTarget);
     setTarget(newTarget);
     setCurrentRoundTarget(newTarget);
 
-    const preparedNewCardsForAnimation = Array.from({ length: TOTAL_CARD_SLOTS }).map((_, index) => {
+    const preparedNewCardsForAnimation = Array.from({
+      length: TOTAL_CARD_SLOTS,
+    }).map((_, index) => {
       const newCard = newGeneratedCards[index];
       if (newCard) {
         return {
@@ -145,7 +163,7 @@ export default function App() {
           isAbstract: false,
           isFlipped: false,
           isPlaceholder: true,
-          invisible: true
+          invisible: true,
         };
       }
     });
@@ -153,15 +171,20 @@ export default function App() {
     cardRefs.current = {};
     setCards([]);
 
-    await new Promise(resolve => requestAnimationFrame(() => {
-      setCardsToRender(preparedNewCardsForAnimation);
-      setNewCardsAnimatingIn(true);
-      resolve();
-    }));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => {
+        setCardsToRender(preparedNewCardsForAnimation);
+        setNewCardsAnimatingIn(true);
+        resolve();
+      })
+    );
 
     await sleep(400);
     playSound(reshuffleSound);
-    await sleep(800 + (newGeneratedCards.length > 0 ? (newGeneratedCards.length - 1) * 50 : 0));
+    await sleep(
+      800 +
+        (newGeneratedCards.length > 0 ? (newGeneratedCards.length - 1) * 50 : 0)
+    );
 
     setHandCardsFlipped(true);
     await sleep(600);
@@ -170,21 +193,28 @@ export default function App() {
     playSound(cardRevealSound);
     await sleep(600);
 
-    const finalCardsState = Array.from({ length: TOTAL_CARD_SLOTS }).map((_, index) => {
-      const generatedCard = newGeneratedCards[index];
-      if (generatedCard) {
-        return { ...generatedCard, isFlipped: false, invisible: false, isPlaceholder: false };
-      } else {
-        return {
-          id: `placeholder-final-${Date.now()}-${index}`,
-          value: null,
-          isAbstract: false,
-          isFlipped: false,
-          isPlaceholder: true,
-          invisible: true
-        };
+    const finalCardsState = Array.from({ length: TOTAL_CARD_SLOTS }).map(
+      (_, index) => {
+        const generatedCard = newGeneratedCards[index];
+        if (generatedCard) {
+          return {
+            ...generatedCard,
+            isFlipped: false,
+            invisible: false,
+            isPlaceholder: false,
+          };
+        } else {
+          return {
+            id: `placeholder-final-${Date.now()}-${index}`,
+            value: null,
+            isAbstract: false,
+            isFlipped: false,
+            isPlaceholder: true,
+            invisible: true,
+          };
+        }
       }
-    });
+    );
 
     setCards(finalCardsState);
     setOriginalCards(newGeneratedCards);
@@ -194,7 +224,7 @@ export default function App() {
     setHistory([]);
     setIsReshuffling(false);
     setNewCardsAnimatingIn(false);
-    document.body.classList.remove('scrolling-disabled');
+    document.body.classList.remove("scrolling-disabled");
   };
 
   const getCardExitStyle = (cardCenter, screenCenterElement) => {
@@ -206,21 +236,43 @@ export default function App() {
     const dy = targetY - cardCenter.y;
     const factor = 1.0;
     return {
-      '--card-exit-x': `${dx * factor}px`,
-      '--card-exit-y': `${dy * factor}px`,
+      "--card-exit-x": `${dx * factor}px`,
+      "--card-exit-y": `${dy * factor}px`,
     };
   };
 
   useEffect(() => {
-    if (gameStarted && userInteracted) {
+  if (gameStarted && userInteracted) {
+    const params = new URLSearchParams(window.location.search);
+    const cardsParam = params.get('cards');
+    const targetParam = params.get('target');
+
+    if (cardsParam && targetParam) {
+      const parsedCards = cardsParam.split(',').map(Number);
+      const parsedTarget = Number(targetParam);
+      startNewRound(false, parsedCards, parsedTarget);
+    } else {
       startNewRound(true);
     }
-  }, [gameStarted, userInteracted]);
+  }
+}, [gameStarted, userInteracted]);
+
 
   useEffect(() => {
-    if (!isReshuffling && !newCardsAnimatingIn && gameStarted && !flyingCardInfo) {
-      const visibleCards = cards.filter((card) => !card.invisible && !card.isPlaceholder);
-      if (visibleCards.length === 1 && visibleCards[0].value === target && target !== null) {
+    if (
+      !isReshuffling &&
+      !newCardsAnimatingIn &&
+      gameStarted &&
+      !flyingCardInfo
+    ) {
+      const visibleCards = cards.filter(
+        (card) => !card.invisible && !card.isPlaceholder
+      );
+      if (
+        visibleCards.length === 1 &&
+        visibleCards[0].value === target &&
+        target !== null
+      ) {
         // confetti();
         // playSound(successSound);
         if (autoReshuffle) {
@@ -228,7 +280,17 @@ export default function App() {
         }
       }
     }
-  }, [cards, target, autoReshuffle, userInteracted, soundsOn, isReshuffling, newCardsAnimatingIn, gameStarted, flyingCardInfo]);
+  }, [
+    cards,
+    target,
+    autoReshuffle,
+    userInteracted,
+    soundsOn,
+    isReshuffling,
+    newCardsAnimatingIn,
+    gameStarted,
+    flyingCardInfo,
+  ]);
 
   // This effect will run whenever `selected` or `selectedOperator` changes.
   // It ensures `performOperation` is called as soon as conditions are met.
@@ -256,13 +318,15 @@ export default function App() {
   };
 
   const handleOperatorSelect = (op) => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo) return;
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo)
+      return;
 
-    setSelectedOperator(prevOp => prevOp === op ? null : op);
+    setSelectedOperator((prevOp) => (prevOp === op ? null : op));
   };
 
   const performOperation = ([aId, bId], operator) => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo) return;
+    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo)
+      return;
 
     const cardA_Obj = cards.find((c) => c.id === aId);
     const cardB_Obj = cards.find((c) => c.id === bId);
@@ -271,7 +335,7 @@ export default function App() {
     const result = operate(cardA_Obj.value, cardB_Obj.value, operator);
     if (result == null) return;
 
-    setHistory((prev) => [...prev, cards.map(c => ({ ...c }))]);
+    setHistory((prev) => [...prev, cards.map((c) => ({ ...c }))]);
 
     const newCardResultId = Date.now();
 
@@ -302,15 +366,16 @@ export default function App() {
     }
 
     const updatedCards = cards.map((c) => {
-      if (c.id === aId) return {
-        id: newCardResultId, // New card takes slot of A
-        value: result,
-        isAbstract: result < 1 || result > 13 || parseInt(result) !== result,
-        isFlipped: false,
-        invisible: false,
-        isPlaceholder: false,
-        isNewlyMerged: true, // Flag for "appear" animation
-      };
+      if (c.id === aId)
+        return {
+          id: newCardResultId, // New card takes slot of A
+          value: result,
+          isAbstract: result < 1 || result > 13 || parseInt(result) !== result,
+          isFlipped: false,
+          invisible: false,
+          isPlaceholder: false,
+          isNewlyMerged: true, // Flag for "appear" animation
+        };
       if (c.id === bId) return { ...c, invisible: true }; // Original card B becomes invisible in layout
       return c;
     });
@@ -321,26 +386,43 @@ export default function App() {
     setSelectedOperator(null);
 
     // --- NEW LOGIC FOR WIN CONDITION CHECK DURING MERGE ---
-    const newCardsStateAfterMerge = updatedCards.filter(c => c.id !== bId && !c.isPlaceholder && !c.invisible); // Simulate the state after B is gone
-    const potentialWinningCard = newCardsStateAfterMerge.find(c => c.id === newCardResultId);
+    const newCardsStateAfterMerge = updatedCards.filter(
+      (c) => c.id !== bId && !c.isPlaceholder && !c.invisible
+    ); // Simulate the state after B is gone
+    const potentialWinningCard = newCardsStateAfterMerge.find(
+      (c) => c.id === newCardResultId
+    );
 
-    if (potentialWinningCard && newCardsStateAfterMerge.length === 1 && potentialWinningCard.value === target) {
-        // Trigger confetti and sound immediately for a win
-        confetti();
-        playSound(successSound);
+    if (
+      potentialWinningCard &&
+      newCardsStateAfterMerge.length === 1 &&
+      potentialWinningCard.value === target
+    ) {
+      // Trigger confetti and sound immediately for a win
+      confetti();
+      playSound(successSound);
     }
     // --- END NEW LOGIC ---
 
     setTimeout(() => {
       setFlyingCardInfo(null);
-      setCards(currentCards =>
-        currentCards.map(c => (c.id === newCardResultId ? { ...c, isNewlyMerged: false } : c))
+      setCards((currentCards) =>
+        currentCards.map((c) =>
+          c.id === newCardResultId ? { ...c, isNewlyMerged: false } : c
+        )
       );
     }, MERGE_ANIMATION_DURATION);
   };
 
   const handleUndo = () => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo || history.length === 0) return;
+    if (
+      isReshuffling ||
+      newCardsAnimatingIn ||
+      !gameStarted ||
+      flyingCardInfo ||
+      history.length === 0
+    )
+      return;
     playSound(undoSound);
     const prev = history[history.length - 1];
     setCards(prev);
@@ -350,20 +432,38 @@ export default function App() {
   };
 
   const handleReset = () => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo || (history.length === 0 && originalCards.length === 0)) return;
+    if (
+      isReshuffling ||
+      newCardsAnimatingIn ||
+      !gameStarted ||
+      flyingCardInfo ||
+      (history.length === 0 && originalCards.length === 0)
+    )
+      return;
     playSound(undoSound);
 
-    const resetCardsState = Array.from({ length: TOTAL_CARD_SLOTS }).map((_, index) => {
-      const originalCard = originalCards[index];
-      if (originalCard) {
-        return { ...originalCard, isFlipped: false, invisible: false, isPlaceholder: false };
-      } else {
-        return {
-          id: `placeholder-reset-${Date.now()}-${index}`,
-          value: null, isAbstract: false, isFlipped: false, isPlaceholder: true, invisible: true
-        };
+    const resetCardsState = Array.from({ length: TOTAL_CARD_SLOTS }).map(
+      (_, index) => {
+        const originalCard = originalCards[index];
+        if (originalCard) {
+          return {
+            ...originalCard,
+            isFlipped: false,
+            invisible: false,
+            isPlaceholder: false,
+          };
+        } else {
+          return {
+            id: `placeholder-reset-${Date.now()}-${index}`,
+            value: null,
+            isAbstract: false,
+            isFlipped: false,
+            isPlaceholder: true,
+            invisible: true,
+          };
+        }
       }
-    });
+    );
 
     setCards(resetCardsState);
     setHistory([]);
@@ -373,9 +473,17 @@ export default function App() {
 
   if (!userInteracted) {
     return (
-      <div className="container text-center position-relative d-flex flex-column justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-        <h1 className="mb-4">CartCulus<h5 className="text-center">Casual Mode</h5></h1>
-        <p className="lead">Use all four cards to reach the target value. Press anywhere to start. Good luck!</p>
+      <div
+        className="container text-center position-relative d-flex flex-column justify-content-center align-items-center"
+        style={{ minHeight: "100vh" }}
+      >
+        <h1 className="mb-4">
+          CartCulus<h5 className="text-center">Casual Mode</h5>
+        </h1>
+        <p className="lead">
+          Use all four cards to reach the target value. Press anywhere to start.
+          Good luck!
+        </p>
         <div ref={centerRef} className="screen-center-anchor d-none"></div>
       </div>
     );
@@ -387,47 +495,88 @@ export default function App() {
 
       <div className="position-absolute top-0 end-0 m-2">
         <div className="form-check form-switch">
-          <input className="form-check-input" type="checkbox" id="autoReshuffleToggle" checked={autoReshuffle} onChange={() => setAutoReshuffle(!autoReshuffle)} />
-          <label className="form-check-label" htmlFor="autoReshuffleToggle">Auto-reshuffle</label>
+          <input
+            className="form-check-input"
+            type="checkbox"
+            id="autoReshuffleToggle"
+            checked={autoReshuffle}
+            onChange={() => setAutoReshuffle(!autoReshuffle)}
+          />
+          <label className="form-check-label" htmlFor="autoReshuffleToggle">
+            Auto-reshuffle
+          </label>
         </div>
         <div className="form-check form-switch mt-2">
-          <input className="form-check-input" type="checkbox" id="soundsToggle" checked={soundsOn} onChange={() => setSoundsOn(!soundsOn)} />
-          <label className="form-check-label" htmlFor="soundsToggle">Sounds</label>
+          <input
+            className="form-check-input"
+            type="checkbox"
+            id="soundsToggle"
+            checked={soundsOn}
+            onChange={() => setSoundsOn(!soundsOn)}
+          />
+          <label className="form-check-label" htmlFor="soundsToggle">
+            Sounds
+          </label>
         </div>
       </div>
 
-      <h1 className="text-start text-sm-center">CartCulus<h5 className="text-start text-sm-center">Casual Mode</h5></h1>
+      <h1 className="text-start text-sm-center">
+        CartCulus<h5 className="text-start text-sm-center">Casual Mode</h5>
+      </h1>
 
       {gameStarted && (
         <>
           <div className="target my-4">
             <div className="target-border-bs">
               <span className="target-text-bs">TARGET</span>
-              <Card value={currentRoundTarget} isAbstract={currentRoundTarget < 1 || currentRoundTarget > 13} isTarget={true} isFlipped={!targetCardFlipped} />
+              <Card
+                value={currentRoundTarget}
+                isAbstract={currentRoundTarget < 1 || currentRoundTarget > 13}
+                isTarget={true}
+                isFlipped={!targetCardFlipped}
+              />
             </div>
           </div>
 
           <div className="container">
             <div className="row justify-content-center gx-3 gy-3 position-relative">
-              {(isReshuffling || newCardsAnimatingIn ? cardsToRender : cards).map((card, index) => {
-                const shouldAnimateOut = isReshuffling && !newCardsAnimatingIn && !card.isPlaceholder && !card.invisible;
-                const shouldAnimateIn = newCardsAnimatingIn && !card.isPlaceholder;
+              {(isReshuffling || newCardsAnimatingIn
+                ? cardsToRender
+                : cards
+              ).map((card, index) => {
+                const shouldAnimateOut =
+                  isReshuffling &&
+                  !newCardsAnimatingIn &&
+                  !card.isPlaceholder &&
+                  !card.invisible;
+                const shouldAnimateIn =
+                  newCardsAnimatingIn && !card.isPlaceholder;
                 const isNewlyMerged = card.isNewlyMerged;
 
                 return (
                   <div
                     key={card.id}
                     className={`col-6 col-sm-auto d-flex justify-content-center reshuffle-card-container
-                      ${shouldAnimateOut ? 'card-animating-out' : ''}
-                      ${shouldAnimateIn ? 'card-animating-in' : ''}
-                      ${shouldAnimateIn && card.isFlipped ? 'initial-offscreen-hidden' : ''}
-                      ${isNewlyMerged ? 'newly-merged-card-appear-container' : ''}
+                      ${shouldAnimateOut ? "card-animating-out" : ""}
+                      ${shouldAnimateIn ? "card-animating-in" : ""}
+                      ${
+                        shouldAnimateIn && card.isFlipped
+                          ? "initial-offscreen-hidden"
+                          : ""
+                      }
+                      ${
+                        isNewlyMerged
+                          ? "newly-merged-card-appear-container"
+                          : ""
+                      }
                     `}
                     style={{
                       ...(shouldAnimateOut ? card.dynamicOutStyle : {}),
-                      '--card-animation-delay': shouldAnimateIn ? `${index * 0.05}s` : '0s'
+                      "--card-animation-delay": shouldAnimateIn
+                        ? `${index * 0.05}s`
+                        : "0s",
                     }}
-                    ref={el => cardRefs.current[card.id] = el}
+                    ref={(el) => (cardRefs.current[card.id] = el)}
                   >
                     <Card
                       value={card.value}
@@ -447,7 +596,15 @@ export default function App() {
                       isAbstract={card.isAbstract}
                       invisible={card.invisible && !isNewlyMerged}
                       isPlaceholder={card.isPlaceholder}
-                      isFlipped={card.isPlaceholder ? false : (newCardsAnimatingIn ? card.isFlipped : (!isReshuffling && !newCardsAnimatingIn ? !handCardsFlipped : card.isFlipped))}
+                      isFlipped={
+                        card.isPlaceholder
+                          ? false
+                          : newCardsAnimatingIn
+                          ? card.isFlipped
+                          : !isReshuffling && !newCardsAnimatingIn
+                          ? !handCardsFlipped
+                          : card.isFlipped
+                      }
                     />
                   </div>
                 );
@@ -457,14 +614,14 @@ export default function App() {
               {flyingCardInfo && (
                 <div
                   style={{
-                    position: 'fixed',
+                    position: "fixed",
                     left: `${flyingCardInfo.initialLeft}px`,
                     top: `${flyingCardInfo.initialTop}px`,
                     width: `${flyingCardInfo.width}px`,
                     height: `${flyingCardInfo.height}px`,
                     zIndex: 1050,
-                    '--translateX': `${flyingCardInfo.translateX}px`,
-                    '--translateY': `${flyingCardInfo.translateY}px`,
+                    "--translateX": `${flyingCardInfo.translateX}px`,
+                    "--translateY": `${flyingCardInfo.translateY}px`,
                   }}
                   className="flying-merge-card"
                 >
@@ -482,14 +639,23 @@ export default function App() {
 
       <div className="operators my-4 d-flex justify-content-center">
         {[
-          { op: "+", src: "./images/addition.png" }, { op: "-", src: "./images/subtraction.png" },
-          { op: "×", src: "./images/multiplication.png" }, { op: "÷", src: "./images/division.png" },
+          { op: "+", src: "./images/addition.png" },
+          { op: "-", src: "./images/subtraction.png" },
+          { op: "×", src: "./images/multiplication.png" },
+          { op: "÷", src: "./images/division.png" },
         ].map(({ op, src }) => (
           <button
             key={op}
-            className={`operator-button ${selectedOperator === op ? 'selected-operator' : ''}`}
+            className={`operator-button ${
+              selectedOperator === op ? "selected-operator" : ""
+            }`}
             onClick={() => handleOperatorSelect(op)}
-            disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo}
+            disabled={
+              isReshuffling ||
+              newCardsAnimatingIn ||
+              !gameStarted ||
+              flyingCardInfo
+            }
           >
             <img src={src} alt={op} className="operator-img" />
           </button>
@@ -497,9 +663,48 @@ export default function App() {
       </div>
 
       <div className="controls d-flex justify-content-center gap-2">
-        <button className="btn btn-info" onClick={handleUndo} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || history.length === 0}>Undo</button>
-        <button className="btn btn-warning" onClick={handleReset} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted || history.length === 0}>Reset</button>
-        <button className="btn btn-success" onClick={() => startNewRound(true)} disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}>Reshuffle</button>
+        <button
+          className="btn btn-info"
+          onClick={handleUndo}
+          disabled={
+            isReshuffling ||
+            newCardsAnimatingIn ||
+            !gameStarted ||
+            history.length === 0
+          }
+        >
+          Undo
+        </button>
+        <button
+          className="btn btn-warning"
+          onClick={handleReset}
+          disabled={
+            isReshuffling ||
+            newCardsAnimatingIn ||
+            !gameStarted ||
+            history.length === 0
+          }
+        >
+          Reset
+        </button>
+        <button
+          className="btn btn-success"
+          onClick={() => startNewRound(true)}
+          disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}
+        >
+          Reshuffle
+        </button>
+        <button
+          className="btn btn-secondary"
+          onClick={() => {
+            const values = cards.filter(c => !c.invisible && !c.isPlaceholder).map(c => c.value);
+            const url = `${window.location.origin}?cards=${values.join(',')}&target=${target}`;
+            navigator.clipboard.writeText(url).then(() => alert('Link copied to clipboard!'));
+          }}
+          disabled={cards.length < 4 || target == null}
+        >
+          Share This Riddle
+        </button>
       </div>
     </div>
   );
