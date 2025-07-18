@@ -697,8 +697,9 @@ export default function App() {
         <button
           className="btn btn-secondary"
           onClick={() => {
-            const values = originalCards.map(c => c.value); // use initial round state
-            const url = `${window.location.origin}?cards=${values.join(',')}&target=${target}`;
+            const baseUrl = `${window.location.origin}${window.location.pathname}`;
+            const values = originalCards.map(c => c.value);
+            const url = `${baseUrl}?cards=${values.join(',')}&target=${target}`;
             navigator.clipboard.writeText(url).then(() => alert('Link copied to clipboard!'));
           }}
           disabled={originalCards.length < 4 || target == null}
