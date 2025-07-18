@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function Card({ value, onClick, selected, isAbstract, invisible, isFlipped = false, isTarget = false, isPlaceholder = false }) {
   const formattedValue =
-    typeof value === 'number' ? parseFloat(value.toFixed(3)) : value;
+    typeof value === 'number' ? parseFloat(value.toFixed(2)) : value;
 
   const frontImagePath = isAbstract
     ? './images/card_abstract.png'
