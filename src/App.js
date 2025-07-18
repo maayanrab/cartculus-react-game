@@ -374,7 +374,7 @@ export default function App() {
   if (!userInteracted) {
     return (
       <div className="container text-center position-relative d-flex flex-column justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-        <h1 className="mb-4">CartCulus<h5 className="text-center">Practice Mode</h5></h1>
+        <h1 className="mb-4">CartCulus<h5 className="text-center">Casual Mode</h5></h1>
         <p className="lead">Use all four cards to reach the target value. Press anywhere to start. Good luck!</p>
         <div ref={centerRef} className="screen-center-anchor d-none"></div>
       </div>
@@ -396,7 +396,7 @@ export default function App() {
         </div>
       </div>
 
-      <h1 className="text-start text-sm-center">CartCulus<h5 className="text-start text-sm-center">Practice Mode</h5></h1>
+      <h1 className="text-start text-sm-center">CartCulus<h5 className="text-start text-sm-center">Casual Mode</h5></h1>
 
       {gameStarted && (
         <>
