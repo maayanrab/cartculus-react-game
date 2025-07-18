@@ -703,7 +703,7 @@ export default function App() {
           }}
           disabled={originalCards.length < 4 || target == null}
         >
-          Share This Riddle
+          Share Riddle
         </button>
       </div>
     </div>
