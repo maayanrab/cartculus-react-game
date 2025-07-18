@@ -697,11 +697,11 @@ export default function App() {
         <button
           className="btn btn-secondary"
           onClick={() => {
-            const values = cards.filter(c => !c.invisible && !c.isPlaceholder).map(c => c.value);
+            const values = originalCards.map(c => c.value); // use initial round state
             const url = `${window.location.origin}?cards=${values.join(',')}&target=${target}`;
             navigator.clipboard.writeText(url).then(() => alert('Link copied to clipboard!'));
           }}
-          disabled={cards.length < 4 || target == null}
+          disabled={originalCards.length < 4 || target == null}
         >
           Share This Riddle
         </button>
