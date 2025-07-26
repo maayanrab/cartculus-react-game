@@ -700,7 +700,12 @@ export default function App() {
             const baseUrl = `${window.location.origin}${window.location.pathname}`;
             const values = originalCards.map(c => c.value);
             const url = `${baseUrl}?cards=${values.join(',')}&target=${target}`;
-            navigator.clipboard.writeText(url).then(() => alert('Link copied to clipboard!'));
+            navigator.share({
+              title: 'Check out this CartCulus riddle!',
+              url: url
+            }).catch(err => {
+              console.error('Error sharing:', err);
+            });
           }}
           disabled={originalCards.length < 4 || target == null}
         >
