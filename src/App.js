@@ -543,6 +543,19 @@ export default function App() {
             </div>
           </div> */}
           <div className="d-flex flex-sm-row justify-content-center align-items-center my-4 gap-3 controls-target-wrapper">
+
+            <div className="target">
+              <div className="target-border-bs">
+                <span className="target-text-bs">TARGET</span>
+                <Card
+                  value={currentRoundTarget}
+                  isAbstract={currentRoundTarget < 1 || currentRoundTarget > 13}
+                  isTarget={true}
+                  isFlipped={!targetCardFlipped}
+                />
+              </div>
+            </div>
+
             <div className="d-flex flex-column gap-2 small-screen-controls">
               <button
                 className="img-button"
@@ -601,17 +614,6 @@ export default function App() {
               </button>
             </div>
 
-            <div className="target">
-              <div className="target-border-bs">
-                <span className="target-text-bs">TARGET</span>
-                <Card
-                  value={currentRoundTarget}
-                  isAbstract={currentRoundTarget < 1 || currentRoundTarget > 13}
-                  isTarget={true}
-                  isFlipped={!targetCardFlipped}
-                />
-              </div>
-            </div>
           </div>
 
           {/* End of new addition */}
