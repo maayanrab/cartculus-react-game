@@ -525,8 +525,9 @@ export default function App() {
       </div>
 
       <h1 className="text-start text-sm-center">
-        CartCulus<h5 className="text-start text-sm-center">Casual Mode</h5>
+        CartCulus
       </h1>
+      <h5 className="text-start text-sm-center">Casual Mode</h5>
 
       {gameStarted && (
         <>
@@ -553,7 +554,7 @@ export default function App() {
                   history.length === 0
                 }
               >
-                <img src="/images/undo-button.png" alt="Undo" />
+                <img src="./images/undo-button.png" alt="Undo" />
               </button>
 
               <button
@@ -566,7 +567,7 @@ export default function App() {
                   history.length === 0
                 }
               >
-                <img src="/images/reset-button.png" alt="Reset" />
+                <img src="./images/reset-button.png" alt="Reset" />
               </button>
 
               <button
@@ -574,7 +575,7 @@ export default function App() {
                 onClick={() => startNewRound(true)}
                 disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}
               >
-                <img src="/images/reshuffle-button.png" alt="Reshuffle" />
+                <img src="./images/reshuffle-button.png" alt="Reshuffle" />
               </button>
 
               <button
@@ -596,7 +597,7 @@ export default function App() {
                 }}
                 disabled={originalCards.length < 4 || target == null}
               >
-                <img src="/images/share-button.png" alt="Share Riddle" />
+                <img src="./images/share-button.png" alt="Share Riddle" />
               </button>
             </div>
 
