@@ -96,7 +96,11 @@ export default function App() {
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  const startNewRound = async (playInitialDiscardSound = true, presetCards = null, presetTarget = null) => {
+  const startNewRound = async (
+    playInitialDiscardSound = true,
+    presetCards = null,
+    presetTarget = null
+  ) => {
     if (isReshuffling || flyingCardInfo) return;
 
     if (playInitialDiscardSound) {
@@ -242,21 +246,20 @@ export default function App() {
   };
 
   useEffect(() => {
-  if (gameStarted && userInteracted) {
-    const params = new URLSearchParams(window.location.search);
-    const cardsParam = params.get('cards');
-    const targetParam = params.get('target');
+    if (gameStarted && userInteracted) {
+      const params = new URLSearchParams(window.location.search);
+      const cardsParam = params.get("cards");
+      const targetParam = params.get("target");
 
-    if (cardsParam && targetParam) {
-      const parsedCards = cardsParam.split(',').map(Number);
-      const parsedTarget = Number(targetParam);
-      startNewRound(false, parsedCards, parsedTarget);
-    } else {
-      startNewRound(true);
+      if (cardsParam && targetParam) {
+        const parsedCards = cardsParam.split(",").map(Number);
+        const parsedTarget = Number(targetParam);
+        startNewRound(false, parsedCards, parsedTarget);
+      } else {
+        startNewRound(true);
+      }
     }
-  }
-}, [gameStarted, userInteracted]);
-
+  }, [gameStarted, userInteracted]);
 
   useEffect(() => {
     if (
@@ -526,7 +529,7 @@ export default function App() {
 
       {gameStarted && (
         <>
-          <div className="target my-4">
+          {/* <div className="target my-4">
             <div className="target-border-bs">
               <span className="target-text-bs">TARGET</span>
               <Card
@@ -536,7 +539,80 @@ export default function App() {
                 isFlipped={!targetCardFlipped}
               />
             </div>
+          </div> */}
+          <div className="d-flex flex-sm-row justify-content-center align-items-center my-4 gap-3 controls-target-wrapper">
+            <div className="d-flex flex-column gap-2 small-screen-controls">
+              <button
+                className="img-button"
+                onClick={handleUndo}
+                disabled={
+                  isReshuffling ||
+                  newCardsAnimatingIn ||
+                  !gameStarted ||
+                  history.length === 0
+                }
+              >
+                <img src="/images/undo-button.png" alt="Undo" />
+              </button>
+
+              <button
+                className="img-button"
+                onClick={handleReset}
+                disabled={
+                  isReshuffling ||
+                  newCardsAnimatingIn ||
+                  !gameStarted ||
+                  history.length === 0
+                }
+              >
+                <img src="/images/reset-button.png" alt="Reset" />
+              </button>
+
+              <button
+                className="img-button"
+                onClick={() => startNewRound(true)}
+                disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}
+              >
+                <img src="/images/reshuffle-button.png" alt="Reshuffle" />
+              </button>
+
+              <button
+                className="img-button"
+                onClick={() => {
+                  const baseUrl = `${window.location.origin}${window.location.pathname}`;
+                  const values = originalCards.map((c) => c.value);
+                  const url = `${baseUrl}?cards=${values.join(
+                    ","
+                  )}&target=${target}`;
+                  navigator
+                    .share({
+                      title: "Check out this CartCulus riddle!",
+                      url: url,
+                    })
+                    .catch((err) => {
+                      console.error("Error sharing:", err);
+                    });
+                }}
+                disabled={originalCards.length < 4 || target == null}
+              >
+                <img src="/images/share-button.png" alt="Share Riddle" />
+              </button>
+            </div>
+
+            <div className="target">
+              <div className="target-border-bs">
+                <span className="target-text-bs">TARGET</span>
+                <Card
+                  value={currentRoundTarget}
+                  isAbstract={currentRoundTarget < 1 || currentRoundTarget > 13}
+                  isTarget={true}
+                  isFlipped={!targetCardFlipped}
+                />
+              </div>
+            </div>
           </div>
+
+          {/* End of new addition */}
 
           <div className="container">
             <div className="row justify-content-center gx-3 gy-3 position-relative">
@@ -662,7 +738,7 @@ export default function App() {
         ))}
       </div>
 
-      <div className="controls d-flex justify-content-center gap-2">
+      {/* <div className="controls d-flex justify-content-center gap-2">
         <button
           className="btn btn-info"
           onClick={handleUndo}
@@ -698,20 +774,22 @@ export default function App() {
           className="btn btn-secondary"
           onClick={() => {
             const baseUrl = `${window.location.origin}${window.location.pathname}`;
-            const values = originalCards.map(c => c.value);
-            const url = `${baseUrl}?cards=${values.join(',')}&target=${target}`;
-            navigator.share({
-              title: 'Check out this CartCulus riddle!',
-              url: url
-            }).catch(err => {
-              console.error('Error sharing:', err);
-            });
+            const values = originalCards.map((c) => c.value);
+            const url = `${baseUrl}?cards=${values.join(",")}&target=${target}`;
+            navigator
+              .share({
+                title: "Check out this CartCulus riddle!",
+                url: url,
+              })
+              .catch((err) => {
+                console.error("Error sharing:", err);
+              });
           }}
           disabled={originalCards.length < 4 || target == null}
         >
           Share Riddle
         </button>
-      </div>
+      </div> */}
     </div>
   );
 }
