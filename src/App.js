@@ -481,8 +481,9 @@ export default function App() {
         style={{ minHeight: "100vh" }}
       >
         <h1 className="mb-4">
-          CartCulus<h5 className="text-center">Casual Mode</h5>
+          CartCulus
         </h1>
+        <h5 className="text-center">Casual Mode</h5>
         <p className="lead">
           Use all four cards to reach the target value. Press anywhere to start.
           Good luck!
