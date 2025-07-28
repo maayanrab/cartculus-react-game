@@ -465,17 +465,22 @@ export default function App() {
         <h1 className="mb-4">CartCulus</h1>
 
         <div className="form-check form-switch d-flex justify-content-center align-items-center">
-            <input
-              className="form-check-input"
-              type="checkbox"
-              id="soundsToggle"
-              checked={soundsOn}
-              onChange={() => setSoundsOn(!soundsOn)}
-            />
-            <label className="form-check-label ms-2" htmlFor="soundsToggle">
-              Sounds
-            </label>
-          </div>
+          <input
+            className="form-check-input"
+            type="checkbox"
+            id="soundsToggle"
+            checked={soundsOn}
+            onChange={() => setSoundsOn(!soundsOn)}
+          />
+          <label className="form-check-label ms-2" htmlFor="soundsToggle">
+            Sounds
+          </label>
+        </div>
+        <br />
+
+        <p className="lead mb-4">
+          Use all four cards to reach the target value. Good luck!
+        </p>
 
         <div className="d-flex flex-column gap-3 mt-4">
           <button
