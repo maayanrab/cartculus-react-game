@@ -549,7 +549,11 @@ export default function App() {
               </div>
             </div>
 
-            <div className="d-flex flex-column gap-2 small-screen-controls">
+            {/* <div className="d-flex flex-column gap-2 small-screen-controls"> */}
+            <div
+              className="d-none d-sm-flex flex-column gap-2 position-absolute"
+              style={{ left: "calc(50% + 130px)" }}
+            >
               <button
                 className="img-button"
                 onClick={handleUndo}
