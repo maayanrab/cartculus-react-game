@@ -24,7 +24,7 @@ export default function App() {
   const [originalCards, setOriginalCards] = useState([]);
   const [history, setHistory] = useState([]);
   const [autoReshuffle, setAutoReshuffle] = useState(true);
-  const [userInteracted, setUserInteracted] = useState(false);
+  const [userInteracted, setUserInteracted] = useState(false); // This will now always be true after initial sound loading
   const [soundsOn, setSoundsOn] = useState(true);
   const [gameStarted, setGameStarted] = useState(false);
 
@@ -40,52 +40,33 @@ export default function App() {
   const cardRefs = useRef({});
   const centerRef = useRef(null);
 
+  // Load sounds on component mount
   useEffect(() => {
-    const handleInitialInteraction = () => {
-      if (!userInteracted) {
-        undoSound = new Audio("./sounds/undo.wav");
-        operatorSound = new Audio("./sounds/operator.wav");
-        successSound = new Audio("./sounds/success.wav");
-        reshuffleSound = new Audio("./sounds/reshuffle.wav");
-        cardRevealSound = new Audio("./sounds/card_reveal.wav");
-        discardHandSound = new Audio("./sounds/discard_hand.wav");
+    undoSound = new Audio("./sounds/undo.wav");
+    operatorSound = new Audio("./sounds/operator.wav");
+    successSound = new Audio("./sounds/success.wav");
+    reshuffleSound = new Audio("./sounds/reshuffle.wav");
+    cardRevealSound = new Audio("./sounds/card_reveal.wav");
+    discardHandSound = new Audio("./sounds/discard_hand.wav");
 
-        const soundsToLoad = [
-          undoSound,
-          operatorSound,
-          successSound,
-          reshuffleSound,
-          cardRevealSound,
-          discardHandSound,
-        ];
-        soundsToLoad.forEach((sound) => {
-          if (sound) {
-            sound.load();
-            sound.onerror = () =>
-              console.error(`Error loading sound: ${sound.src}`);
-          }
-        });
-
-        setUserInteracted(true);
-        if (!gameStarted) {
-          setGameStarted(true);
-        }
-
-        document.removeEventListener("click", handleInitialInteraction);
-        document.removeEventListener("keydown", handleInitialInteraction);
+    const soundsToLoad = [
+      undoSound,
+      operatorSound,
+      successSound,
+      reshuffleSound,
+      cardRevealSound,
+      discardHandSound,
+    ];
+    soundsToLoad.forEach((sound) => {
+      if (sound) {
+        sound.load();
+        sound.onerror = () =>
+          console.error(`Error loading sound: ${sound.src}`);
       }
-    };
+    });
 
-    if (!userInteracted) {
-      document.addEventListener("click", handleInitialInteraction);
-      document.addEventListener("keydown", handleInitialInteraction);
-    }
-
-    return () => {
-      document.removeEventListener("click", handleInitialInteraction);
-      document.removeEventListener("keydown", handleInitialInteraction);
-    };
-  }, [userInteracted, gameStarted]);
+    setUserInteracted(true); // Set userInteracted to true once sounds are loaded
+  }, []); // Empty dependency array means this runs once on mount
 
   const playSound = (audio) => {
     if (userInteracted && audio && soundsOn) {
@@ -245,6 +226,7 @@ export default function App() {
     };
   };
 
+  // Only start a new round if gameStarted becomes true and userInteracted is true
   useEffect(() => {
     if (gameStarted && userInteracted) {
       const params = new URLSearchParams(window.location.search);
@@ -276,8 +258,8 @@ export default function App() {
         visibleCards[0].value === target &&
         target !== null
       ) {
-        // confetti();
-        // playSound(successSound);
+        confetti(); // Trigger confetti immediately
+        // playSound(successSound); // Play success sound immediately
         if (autoReshuffle) {
           setTimeout(() => startNewRound(true), 2000);
         }
@@ -474,23 +456,43 @@ export default function App() {
     setSelectedOperator(null);
   };
 
-  if (!userInteracted) {
+  const MainMenu = () => {
     return (
       <div
         className="container text-center position-relative d-flex flex-column justify-content-center align-items-center"
         style={{ minHeight: "100vh" }}
       >
-        <h1 className="mb-4">
-          CartCulus
-        </h1>
-        <h5 className="text-center">Casual Mode</h5>
-        <p className="lead">
-          Use all four cards to reach the target value. Press anywhere to start.
-          Good luck!
-        </p>
+        <h1 className="mb-4">CartCulus</h1>
+
+        <div className="form-check form-switch d-flex justify-content-center align-items-center">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              id="soundsToggle"
+              checked={soundsOn}
+              onChange={() => setSoundsOn(!soundsOn)}
+            />
+            <label className="form-check-label ms-2" htmlFor="soundsToggle">
+              Sounds
+            </label>
+          </div>
+
+        <div className="d-flex flex-column gap-3 mt-4">
+          <button
+            className="btn btn-primary btn-lg"
+            onClick={() => setGameStarted(true)}
+          >
+            Casual Mode
+          </button>
+          
+        </div>
         <div ref={centerRef} className="screen-center-anchor d-none"></div>
       </div>
     );
+  };
+
+  if (!gameStarted) {
+    return <MainMenu />;
   }
 
   return (
@@ -524,26 +526,12 @@ export default function App() {
         </div>
       </div>
 
-      <h1 className="text-start text-sm-center">
-        CartCulus
-      </h1>
+      <h1 className="text-start text-sm-center">CartCulus</h1>
       <h5 className="text-start text-sm-center">Casual Mode</h5>
 
       {gameStarted && (
         <>
-          {/* <div className="target my-4">
-            <div className="target-border-bs">
-              <span className="target-text-bs">TARGET</span>
-              <Card
-                value={currentRoundTarget}
-                isAbstract={currentRoundTarget < 1 || currentRoundTarget > 13}
-                isTarget={true}
-                isFlipped={!targetCardFlipped}
-              />
-            </div>
-          </div> */}
           <div className="d-flex flex-sm-row justify-content-center align-items-center my-4 gap-3 controls-target-wrapper">
-
             <div className="target">
               <div className="target-border-bs">
                 <span className="target-text-bs">TARGET</span>
@@ -613,10 +601,7 @@ export default function App() {
                 <img src="./images/share-button.png" alt="Share Riddle" />
               </button>
             </div>
-
           </div>
-
-          {/* End of new addition */}
 
           <div className="container">
             <div className="row justify-content-center gx-3 gy-3 position-relative">
@@ -661,9 +646,6 @@ export default function App() {
                     <Card
                       value={card.value}
                       selected={selected.includes(card.id)}
-                      // onClick={
-                      //   !isReshuffling && !newCardsAnimatingIn && !card.isPlaceholder && !card.invisible && !flyingCardInfo ? () => handleCardClick(card.id) : undefined
-                      // }
                       onClick={
                         !isReshuffling &&
                         !newCardsAnimatingIn &&
@@ -741,59 +723,6 @@ export default function App() {
           </button>
         ))}
       </div>
-
-      {/* <div className="controls d-flex justify-content-center gap-2">
-        <button
-          className="btn btn-info"
-          onClick={handleUndo}
-          disabled={
-            isReshuffling ||
-            newCardsAnimatingIn ||
-            !gameStarted ||
-            history.length === 0
-          }
-        >
-          Undo
-        </button>
-        <button
-          className="btn btn-warning"
-          onClick={handleReset}
-          disabled={
-            isReshuffling ||
-            newCardsAnimatingIn ||
-            !gameStarted ||
-            history.length === 0
-          }
-        >
-          Reset
-        </button>
-        <button
-          className="btn btn-success"
-          onClick={() => startNewRound(true)}
-          disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}
-        >
-          Reshuffle
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={() => {
-            const baseUrl = `${window.location.origin}${window.location.pathname}`;
-            const values = originalCards.map((c) => c.value);
-            const url = `${baseUrl}?cards=${values.join(",")}&target=${target}`;
-            navigator
-              .share({
-                title: "Check out this CartCulus riddle!",
-                url: url,
-              })
-              .catch((err) => {
-                console.error("Error sharing:", err);
-              });
-          }}
-          disabled={originalCards.length < 4 || target == null}
-        >
-          Share Riddle
-        </button>
-      </div> */}
     </div>
   );
 }
