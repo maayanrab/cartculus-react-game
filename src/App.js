@@ -608,7 +608,7 @@ export default function App() {
                       console.error("Error sharing:", err);
                     });
                 }}
-                disabled={originalCards.length < 4 || target == null}
+                disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}
               >
                 <img src="./images/share-button.png" alt="Share Riddle" />
               </button>
