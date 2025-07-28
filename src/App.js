@@ -551,7 +551,7 @@ export default function App() {
 
             {/* <div className="d-flex flex-column gap-2 small-screen-controls"> */}
             <div
-              className="d-none d-sm-flex flex-column gap-2 position-absolute"
+              className="d-flex flex-column flex-nowrap gap-2 small-screen-controls position-absolute"
               style={{ left: "calc(50% + 130px)" }}
             >
               <button
