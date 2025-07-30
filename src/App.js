@@ -258,7 +258,7 @@ export default function App() {
         visibleCards[0].value === target &&
         target !== null
       ) {
-        confetti(); // Trigger confetti immediately
+        // confetti(); // Trigger confetti immediately
         // playSound(successSound); // Play success sound immediately
         if (autoReshuffle) {
           setTimeout(() => startNewRound(true), 2000);
