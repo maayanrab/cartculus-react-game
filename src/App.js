@@ -27,7 +27,6 @@ export default function App() {
   const [userInteracted, setUserInteracted] = useState(false);
   const [soundsOn, setSoundsOn] = useState(true);
   const [gameStarted, setGameStarted] = useState(false);
-  const [mode, setMode] = useState("casual"); // 'casual' | 'riddle' | 'solution'
 
   // Solution sharing/replay state
   const [solutionMoves, setSolutionMoves] = useState([]);
@@ -234,6 +233,9 @@ export default function App() {
         });
 
         setUserInteracted(true);
+        if (!gameStarted) {
+          setGameStarted(true);
+        }
 
         document.removeEventListener("click", handleInitialInteraction);
         document.removeEventListener("keydown", handleInitialInteraction);
@@ -249,27 +251,7 @@ export default function App() {
       document.removeEventListener("click", handleInitialInteraction);
       document.removeEventListener("keydown", handleInitialInteraction);
     };
-  }, [userInteracted]);
-
-  // Detect mode from URL once on mount
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const hasCards = params.get("cards");
-    const hasTarget = params.get("target");
-    const hasSolution = params.get("solution");
-    if (hasCards && hasTarget) {
-      if (hasSolution) {
-        setMode("solution");
-        setAutoReshuffle(false);
-      } else {
-        setMode("riddle");
-      }
-      // Auto-enter game for riddle/solution links
-      setGameStarted(true);
-    } else {
-      setMode("casual");
-    }
-  }, []);
+  }, [userInteracted, gameStarted]);
 
   const playSound = (audio) => {
     if (userInteracted && audio && soundsOn) {
@@ -433,7 +415,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (gameStarted) {
+    if (gameStarted && userInteracted) {
       const params = new URLSearchParams(window.location.search);
       const cardsParam = params.get("cards");
       const targetParam = params.get("target");
@@ -455,7 +437,7 @@ export default function App() {
         startNewRound(true);
       }
     }
-  }, [gameStarted]);
+  }, [gameStarted, userInteracted]);
 
   // Start replay once the new round finishes animating in
   useEffect(() => {
@@ -763,6 +745,7 @@ export default function App() {
     setHasWonCurrentRound(false);
   };
 
+  // --- Main Menu component (restores initial interaction flow) ---
   const MainMenu = () => {
     return (
       <div
@@ -775,11 +758,11 @@ export default function App() {
           <input
             className="form-check-input"
             type="checkbox"
-            id="soundsToggleMenu"
+            id="soundsToggleMainMenu"
             checked={soundsOn}
             onChange={() => setSoundsOn(!soundsOn)}
           />
-          <label className="form-check-label ms-2" htmlFor="soundsToggleMenu">
+          <label className="form-check-label ms-2" htmlFor="soundsToggleMainMenu">
             Sounds
           </label>
         </div>
@@ -792,15 +775,7 @@ export default function App() {
         <div className="d-flex flex-column gap-3 mt-4">
           <button
             className="btn btn-primary btn-lg"
-            onClick={() => {
-              // Clear any URL params so we enter a clean casual game
-              const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-              if (window.location.search) {
-                window.history.replaceState({}, document.title, cleanUrl);
-              }
-              setMode("casual");
-              setGameStarted(true);
-            }}
+            onClick={() => setGameStarted(true)}
           >
             Casual Mode
           </button>
@@ -818,34 +793,44 @@ export default function App() {
     <div className="container text-center position-relative">
       <div ref={centerRef} className="screen-center-anchor d-none"></div>
 
-      <div className="position-absolute top-0 start-0 m-2">
+      {/* Back button - desktop/tablet: top-left */}
+      <div className="position-absolute top-0 start-0 m-2 d-none d-sm-block">
         <button
           className="btn btn-primary btn-lg"
           onClick={() => {
-            // Return to main menu and fully reset transient state
-            setGameStarted(false);
-            setIsReshuffling(false);
-            setNewCardsAnimatingIn(false);
-            setHandCardsFlipped(false);
-            setTargetCardFlipped(false);
-            setTarget(null);
-            setCurrentRoundTarget(null);
-            setCards([]);
-            setOriginalCards([]);
-            setHistory([]);
+            setIsReplaying(false);
+            setReplayPendingMoves(null);
             setSelected([]);
             setSelectedOperator(null);
+            setHistory([]);
             setSolutionMoves([]);
             setHasWonCurrentRound(false);
-            setFrozenSolution(null);
-            setReplayPendingMoves(null);
+            setFlyingCardInfo(null);
+            setCards([]);
+            document.body.classList.remove("scrolling-disabled");
+            setGameStarted(false);
+          }}
+        >
+          Back
+        </button>
+      </div>
+
+      {/* Back button - small screens: top-center */}
+      <div className="position-absolute top-0 start-50 translate-middle-x mt-2 d-block d-sm-none">
+        <button
+          className="btn btn-primary btn-lg"
+          onClick={() => {
             setIsReplaying(false);
-            // Clear URL so casual mode won't reload a riddle/solution
-            const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-            if (window.location.search) {
-              window.history.replaceState({}, document.title, cleanUrl);
-            }
-            setMode("casual");
+            setReplayPendingMoves(null);
+            setSelected([]);
+            setSelectedOperator(null);
+            setHistory([]);
+            setSolutionMoves([]);
+            setHasWonCurrentRound(false);
+            setFlyingCardInfo(null);
+            setCards([]);
+            document.body.classList.remove("scrolling-disabled");
+            setGameStarted(false);
           }}
         >
           Back
@@ -882,9 +867,7 @@ export default function App() {
       <h1 className="text-start text-sm-center">
         CartCulus
       </h1>
-      <h5 className="text-start text-sm-center">
-        {mode === "solution" ? "Solution Replay" : mode === "riddle" ? "Riddle" : "Casual Mode"}
-      </h5>
+      <h5 className="text-start text-sm-center">Casual Mode</h5>
 
       {gameStarted && (
         <>
