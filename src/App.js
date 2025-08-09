@@ -811,7 +811,7 @@ export default function App() {
             setGameStarted(false);
           }}
         >
-          Back
+          🏠︎
         </button>
       </div>
 
@@ -833,7 +833,7 @@ export default function App() {
             setGameStarted(false);
           }}
         >
-          Back
+          🏠︎
         </button>
       </div>
 
@@ -896,7 +896,10 @@ export default function App() {
               </div>
             </div>
 
-            <div className="d-flex flex-column gap-2 small-screen-controls">
+            <div
+              className="d-flex flex-column flex-nowrap small-screen-controls position-absolute"
+              style={{ left: "calc(50% + 130px)" }}
+            >
               <button
                 className="img-button"
                 onClick={handleUndo}
