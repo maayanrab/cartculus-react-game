@@ -50,6 +50,8 @@ export default function App() {
   const isReplayingRef = useRef(isReplaying);
   const flyingCardInfoRef = useRef(flyingCardInfo);
   const mergeResolveRef = useRef(null);
+  const replayInitialCardsRef = useRef(null);
+  const replayInitialTargetRef = useRef(null);
   const isSharedRiddle = (() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -161,11 +163,34 @@ export default function App() {
           break;
         }
       }
+      // Step-by-step highlighting with pauses
+      // eslint-disable-next-line no-await-in-loop
+      await highlightStep(cardA.id, step.op, cardB.id);
       // Execute and await this merge to finish before continuing
       // eslint-disable-next-line no-await-in-loop
       await performOperationAndWait([cardA.id, cardB.id], step.op);
+      // Clear highlights briefly between steps
+      setSelected([]);
+      setSelectedOperator(null);
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 150));
     }
     setIsReplaying(false);
+    // After finishing, loop replay after a longer pause
+    if (replayInitialCardsRef.current && replayInitialTargetRef.current) {
+      await new Promise((r) => setTimeout(r, 3000));
+      setReplayPendingMoves(moves);
+      startNewRound(false, replayInitialCardsRef.current, replayInitialTargetRef.current);
+    }
+  };
+
+  const highlightStep = async (aId, op, bId) => {
+    setSelected([aId]);
+    await new Promise((r) => setTimeout(r, 250));
+    setSelectedOperator(op);
+    await new Promise((r) => setTimeout(r, 250));
+    setSelected([aId, bId]);
+    await new Promise((r) => setTimeout(r, 250));
   };
 
   const performOperationAndWait = async ([aId, bId], op) => {
@@ -448,6 +473,8 @@ export default function App() {
           if (decoded && Array.isArray(decoded.m)) {
             setAutoReshuffle(false);
             setReplayPendingMoves(decoded.m);
+            replayInitialCardsRef.current = parsedCards;
+            replayInitialTargetRef.current = parsedTarget;
           }
         }
         startNewRound(false, parsedCards, parsedTarget);
