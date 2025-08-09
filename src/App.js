@@ -28,6 +28,13 @@ export default function App() {
   const [soundsOn, setSoundsOn] = useState(true);
   const [gameStarted, setGameStarted] = useState(false);
 
+  // Solution sharing/replay state
+  const [solutionMoves, setSolutionMoves] = useState([]);
+  const [hasWonCurrentRound, setHasWonCurrentRound] = useState(false);
+  const [replayPendingMoves, setReplayPendingMoves] = useState(null);
+  const [isReplaying, setIsReplaying] = useState(false);
+  const [frozenSolution, setFrozenSolution] = useState(null);
+
   // Animation states
   const [isReshuffling, setIsReshuffling] = useState(false);
   const [newCardsAnimatingIn, setNewCardsAnimatingIn] = useState(false);
@@ -39,6 +46,165 @@ export default function App() {
 
   const cardRefs = useRef({});
   const centerRef = useRef(null);
+  const cardsRef = useRef(cards);
+  const isReplayingRef = useRef(isReplaying);
+  const flyingCardInfoRef = useRef(flyingCardInfo);
+  const mergeResolveRef = useRef(null);
+  useEffect(() => {
+    cardsRef.current = cards;
+  }, [cards]);
+  useEffect(() => {
+    isReplayingRef.current = isReplaying;
+  }, [isReplaying]);
+  useEffect(() => {
+    flyingCardInfoRef.current = flyingCardInfo;
+  }, [flyingCardInfo]);
+
+  // Helpers for solution encode/decode
+  const encodeSolution = (cardsValues, theTarget, moves) => {
+    try {
+      const payload = { v: 1, c: cardsValues, t: theTarget, m: moves };
+      return encodeURIComponent(btoa(JSON.stringify(payload)));
+    } catch (e) {
+      console.error("Failed encoding solution:", e);
+      return null;
+    }
+  };
+  const decodeSolution = (encoded) => {
+    try {
+      const json = atob(decodeURIComponent(encoded));
+      const obj = JSON.parse(json);
+      if (!obj || obj.v !== 1 || !Array.isArray(obj.c) || !Array.isArray(obj.m)) {
+        return null;
+      }
+      return obj;
+    } catch (e) {
+      console.error("Failed decoding solution:", e);
+      return null;
+    }
+  };
+  const buildShareSolutionUrl = () => {
+    const baseUrl = `${window.location.origin}${window.location.pathname}`;
+    const shareData = frozenSolution
+      ? frozenSolution
+      : { c: originalCards.map((c) => c.value), t: target, m: solutionMoves };
+    const encoded = encodeSolution(shareData.c, shareData.t, shareData.m);
+    if (!encoded) return null;
+    return `${baseUrl}?cards=${shareData.c.join(",")}&target=${shareData.t}&solution=${encoded}`;
+  };
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Link copied to clipboard");
+    } catch (e) {
+      console.error("Clipboard copy failed:", e);
+    }
+  };
+  const replaySolution = async (moves) => {
+    if (!Array.isArray(moves) || moves.length === 0) return;
+    setIsReplaying(true);
+    // Ensure any initial animations are done
+    await waitForMergeToFinish();
+    for (let i = 0; i < moves.length; i++) {
+      const step = moves[i];
+      // Prefer slot-based addressing for deterministic replays
+      let cardA;
+      let cardB;
+      if (typeof step.aSlot === "number" && typeof step.bSlot === "number") {
+        cardA = cardsRef.current[step.aSlot];
+        cardB = cardsRef.current[step.bSlot];
+      }
+      if (!cardA || !cardB || cardA.invisible || cardB.invisible) {
+        // Backward compatibility: visible-index based
+        const visible = (cardsRef.current || []).filter(
+          (c) => !c.invisible && !c.isPlaceholder
+        );
+        let candidateA = typeof step.aIndex === "number" ? visible[step.aIndex] : undefined;
+        let candidateB = typeof step.bIndex === "number" ? visible[step.bIndex] : undefined;
+        // If we have operand values recorded, try to refine selection
+        if ((!candidateA || step.aValue !== undefined) && visible.length) {
+          const matchesA = visible.filter((c) => c.value === step.aValue);
+          if (matchesA.length === 1) candidateA = matchesA[0];
+        }
+        if ((!candidateB || step.bValue !== undefined) && visible.length) {
+          const matchesB = visible.filter((c) => c.value === step.bValue);
+          // Avoid picking the same instance if equal values
+          if (matchesB.length === 1) candidateB = matchesB[0];
+          else if (matchesB.length > 1 && candidateA) {
+            candidateB = matchesB.find((c) => c.id !== candidateA.id) || matchesB[0];
+          }
+        }
+        cardA = candidateA;
+        cardB = candidateB;
+        if (!cardA || !cardB) {
+          console.warn("Replay step candidates not found", step, visible);
+          break;
+        }
+      }
+      // Execute and await this merge to finish before continuing
+      // eslint-disable-next-line no-await-in-loop
+      await performOperationAndWait([cardA.id, cardB.id], step.op);
+    }
+    setIsReplaying(false);
+  };
+
+  const performOperationAndWait = async ([aId, bId], op) => {
+    // Ensure DOM nodes are present for animation measurements
+    await waitForCardRefs(aId, bId);
+    let resolved = false;
+    const waitPromise = new Promise((resolve) => {
+      mergeResolveRef.current = () => {
+        if (!resolved) {
+          resolved = true;
+          mergeResolveRef.current = null;
+          resolve();
+        }
+      };
+    });
+    // Safety timeout to avoid hanging forever
+    const timeoutPromise = new Promise((resolve) =>
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          mergeResolveRef.current = null;
+          resolve();
+        }
+      }, MERGE_ANIMATION_DURATION + 400)
+    );
+    performOperation([aId, bId], op);
+    await Promise.race([waitPromise, timeoutPromise]);
+    // Small buffer to settle
+    await new Promise((r) => setTimeout(r, 50));
+  };
+
+  const waitForMergeToFinish = async () => {
+    // Wait until flyingCardInfo is cleared, then a small buffer for state to settle
+    const maxWaitMs = 5000;
+    const pollIntervalMs = 30;
+    let waited = 0;
+    while (flyingCardInfoRef.current && waited < maxWaitMs) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      waited += pollIntervalMs;
+    }
+    // small buffer
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, 100));
+  };
+
+  const waitForCardRefs = async (aId, bId) => {
+    const maxWaitMs = 1000;
+    const pollIntervalMs = 20;
+    let waited = 0;
+    while (
+      (!cardRefs.current[aId] || !cardRefs.current[bId]) &&
+      waited < maxWaitMs
+    ) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      waited += pollIntervalMs;
+    }
+  };
 
   useEffect(() => {
     const handleInitialInteraction = () => {
@@ -226,6 +392,9 @@ export default function App() {
     setSelected([]);
     setSelectedOperator(null);
     setHistory([]);
+    setSolutionMoves([]);
+    setHasWonCurrentRound(false);
+    setFrozenSolution(null);
     setIsReshuffling(false);
     setNewCardsAnimatingIn(false);
     document.body.classList.remove("scrolling-disabled");
@@ -250,16 +419,41 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const cardsParam = params.get("cards");
       const targetParam = params.get("target");
+      const solutionParam = params.get("solution");
 
       if (cardsParam && targetParam) {
         const parsedCards = cardsParam.split(",").map(Number);
         const parsedTarget = Number(targetParam);
+        // If a solution is provided, queue it for replay after the round starts
+        if (solutionParam) {
+          const decoded = decodeSolution(solutionParam);
+          if (decoded && Array.isArray(decoded.m)) {
+            setAutoReshuffle(false);
+            setReplayPendingMoves(decoded.m);
+          }
+        }
         startNewRound(false, parsedCards, parsedTarget);
       } else {
         startNewRound(true);
       }
     }
   }, [gameStarted, userInteracted]);
+
+  // Start replay once the new round finishes animating in
+  useEffect(() => {
+    if (
+      replayPendingMoves &&
+      !isReshuffling &&
+      !newCardsAnimatingIn &&
+      targetCardFlipped &&
+      !isReplaying
+    ) {
+      // Kick off replay
+      const moves = replayPendingMoves;
+      setReplayPendingMoves(null);
+      replaySolution(moves);
+    }
+  }, [replayPendingMoves, isReshuffling, newCardsAnimatingIn, targetCardFlipped, isReplaying]);
 
   useEffect(() => {
     if (
@@ -276,9 +470,16 @@ export default function App() {
         visibleCards[0].value === target &&
         target !== null
       ) {
-        // confetti();
-        // playSound(successSound);
-        if (autoReshuffle) {
+        setHasWonCurrentRound(true);
+        // Freeze share payload once per round
+        setFrozenSolution((prev) =>
+          prev || {
+            c: originalCards.map((c) => c.value),
+            t: target,
+            m: solutionMoves.slice(),
+          }
+        );
+        if (autoReshuffle && !isReplayingRef.current) {
           setTimeout(() => startNewRound(true), 2000);
         }
       }
@@ -293,18 +494,22 @@ export default function App() {
     newCardsAnimatingIn,
     gameStarted,
     flyingCardInfo,
+    originalCards,
+    solutionMoves,
   ]);
 
   // This effect will run whenever `selected` or `selectedOperator` changes.
   // It ensures `performOperation` is called as soon as conditions are met.
   useEffect(() => {
+    if (isReplaying) return;
     if (selected.length === 2 && selectedOperator) {
       performOperation(selected, selectedOperator);
     }
-  }, [selected, selectedOperator]); // Depend on selected and selectedOperator
+  }, [selected, selectedOperator, isReplaying]); // Depend on selected and selectedOperator
 
   const handleCardClick = (id) => {
     if (!gameStarted) return; // Keep this basic game state check
+    if (isReplaying) return;
 
     const clickedCard = cards.find((c) => c.id === id);
     if (!clickedCard || clickedCard.isPlaceholder || clickedCard.invisible)
@@ -321,6 +526,7 @@ export default function App() {
   };
 
   const handleOperatorSelect = (op) => {
+    if (isReplaying) return;
     if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo)
       return;
 
@@ -331,14 +537,39 @@ export default function App() {
     if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo)
       return;
 
-    const cardA_Obj = cards.find((c) => c.id === aId);
-    const cardB_Obj = cards.find((c) => c.id === bId);
+    const sourceCards = isReplayingRef.current ? cardsRef.current : cards;
+    const cardA_Obj = sourceCards.find((c) => c.id === aId);
+    const cardB_Obj = sourceCards.find((c) => c.id === bId);
     if (!cardA_Obj || !cardB_Obj) return;
 
     const result = operate(cardA_Obj.value, cardB_Obj.value, operator);
     if (result == null) return;
 
-    setHistory((prev) => [...prev, cards.map((c) => ({ ...c }))]);
+    // Compute fixed slots for both cards (used for recording and potential freeze)
+    const aSlot = sourceCards.findIndex((c) => c.id === aId);
+    const bSlot = sourceCards.findIndex((c) => c.id === bId);
+
+    // Record the move for solution sharing using fixed slot indices
+    if (!isReplayingRef.current) {
+      if (aSlot !== -1 && bSlot !== -1) {
+        setSolutionMoves((prev) => [
+          ...prev,
+          {
+            aSlot,
+            bSlot,
+            op: operator,
+            // Additional hints to resolve ambiguities on replay
+            aValue: cardA_Obj.value,
+            bValue: cardB_Obj.value,
+          },
+        ]);
+      }
+    }
+
+    // During replay, do not push to history to avoid enabling undo/reset side-effects
+    if (!isReplayingRef.current) {
+      setHistory((prev) => [...prev, sourceCards.map((c) => ({ ...c }))]);
+    }
 
     const newCardResultId = Date.now();
 
@@ -368,7 +599,7 @@ export default function App() {
       });
     }
 
-    const updatedCards = cards.map((c) => {
+    const updatedCards = sourceCards.map((c) => {
       if (c.id === aId)
         return {
           id: newCardResultId, // New card takes slot of A
@@ -383,10 +614,17 @@ export default function App() {
       return c;
     });
 
-    setCards(updatedCards);
+    // Use functional setState to avoid race conditions with stale closures during replay
+    setCards((prev) => {
+      // If in replay mode, prefer the computed updatedCards (based on sourceCards)
+      return isReplayingRef.current ? updatedCards : updatedCards;
+    });
     playSound(operatorSound);
-    setSelected([]);
-    setSelectedOperator(null);
+    // Clear interactive selection only when user is playing
+    if (!isReplayingRef.current) {
+      setSelected([]);
+      setSelectedOperator(null);
+    }
 
     // --- NEW LOGIC FOR WIN CONDITION CHECK DURING MERGE ---
     const newCardsStateAfterMerge = updatedCards.filter(
@@ -404,6 +642,24 @@ export default function App() {
       // Trigger confetti and sound immediately for a win
       confetti();
       playSound(successSound);
+      setHasWonCurrentRound(true);
+      if (!isReplayingRef.current && aSlot !== -1 && bSlot !== -1) {
+        setFrozenSolution((prev) =>
+          prev || {
+            c: originalCards.map((c) => c.value),
+            t: target,
+            m: solutionMoves.concat([
+              {
+                aSlot,
+                bSlot,
+                op: operator,
+                aValue: cardA_Obj.value,
+                bValue: cardB_Obj.value,
+              },
+            ]),
+          }
+        );
+      }
     }
     // --- END NEW LOGIC ---
 
@@ -414,6 +670,16 @@ export default function App() {
           c.id === newCardResultId ? { ...c, isNewlyMerged: false } : c
         )
       );
+      // Notify any awaiting replay step that merge finished
+      const resolver = mergeResolveRef.current;
+      if (resolver) {
+        mergeResolveRef.current = null;
+        try {
+          resolver();
+        } catch {
+          // ignore
+        }
+      }
     }, MERGE_ANIMATION_DURATION);
   };
 
@@ -423,7 +689,8 @@ export default function App() {
       newCardsAnimatingIn ||
       !gameStarted ||
       flyingCardInfo ||
-      history.length === 0
+      history.length === 0 ||
+      isReplaying
     )
       return;
     playSound(undoSound);
@@ -432,6 +699,7 @@ export default function App() {
     setHistory(history.slice(0, -1));
     setSelected([]);
     setSelectedOperator(null);
+    setSolutionMoves((prev) => (prev.length ? prev.slice(0, -1) : prev));
   };
 
   const handleReset = () => {
@@ -440,7 +708,8 @@ export default function App() {
       newCardsAnimatingIn ||
       !gameStarted ||
       flyingCardInfo ||
-      (history.length === 0 && originalCards.length === 0)
+      (history.length === 0 && originalCards.length === 0) ||
+      isReplaying
     )
       return;
     playSound(undoSound);
@@ -472,6 +741,8 @@ export default function App() {
     setHistory([]);
     setSelected([]);
     setSelectedOperator(null);
+    setSolutionMoves([]);
+    setHasWonCurrentRound(false);
   };
 
   if (!userInteracted) {
@@ -586,7 +857,9 @@ export default function App() {
               <button
                 className="img-button"
                 onClick={() => startNewRound(true)}
-                disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}
+                disabled={
+                  isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying
+                }
               >
                 <img src="./images/reshuffle-button.png" alt="Reshuffle" />
               </button>
@@ -608,9 +881,42 @@ export default function App() {
                       console.error("Error sharing:", err);
                     });
                 }}
-                disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}
+                disabled={
+                  isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying
+                }
               >
                 <img src="./images/share-button.png" alt="Share Riddle" />
+              </button>
+
+              <button
+                className="img-button"
+                onClick={() => {
+                  const url = buildShareSolutionUrl();
+                  if (!url) return;
+                  if (navigator.share) {
+                    navigator
+                      .share({
+                        title: "Watch my CartCulus solution!",
+                        url,
+                      })
+                      .catch((err) => console.error("Error sharing:", err));
+                  } else {
+                    copyToClipboard(url);
+                  }
+                }}
+                disabled={
+                  !hasWonCurrentRound ||
+                  solutionMoves.length === 0 ||
+                  isReshuffling ||
+                  newCardsAnimatingIn ||
+                  !gameStarted ||
+                  isReplaying
+                }
+              >
+                <img
+                  src="./images/share-solution-button.png"
+                  alt="Share Solution"
+                />
               </button>
             </div>
 
