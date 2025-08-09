@@ -233,9 +233,6 @@ export default function App() {
         });
 
         setUserInteracted(true);
-        if (!gameStarted) {
-          setGameStarted(true);
-        }
 
         document.removeEventListener("click", handleInitialInteraction);
         document.removeEventListener("keydown", handleInitialInteraction);
@@ -251,7 +248,7 @@ export default function App() {
       document.removeEventListener("click", handleInitialInteraction);
       document.removeEventListener("keydown", handleInitialInteraction);
     };
-  }, [userInteracted, gameStarted]);
+  }, [userInteracted]);
 
   const playSound = (audio) => {
     if (userInteracted && audio && soundsOn) {
@@ -745,28 +742,66 @@ export default function App() {
     setHasWonCurrentRound(false);
   };
 
-  if (!userInteracted) {
+  const MainMenu = () => {
     return (
       <div
         className="container text-center position-relative d-flex flex-column justify-content-center align-items-center"
         style={{ minHeight: "100vh" }}
       >
-        <h1 className="mb-4">
-          CartCulus
-        </h1>
-        <h5 className="text-center">Casual Mode</h5>
-        <p className="lead">
-          Use all four cards to reach the target value. Press anywhere to start.
-          Good luck!
+        <h1 className="mb-4">CartCulus</h1>
+
+        <div className="form-check form-switch d-flex justify-content-center align-items-center">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            id="soundsToggleMenu"
+            checked={soundsOn}
+            onChange={() => setSoundsOn(!soundsOn)}
+          />
+          <label className="form-check-label ms-2" htmlFor="soundsToggleMenu">
+            Sounds
+          </label>
+        </div>
+        <br />
+
+        <p className="lead mb-4">
+          Use all four cards to reach the target value. Good luck!
         </p>
+
+        <div className="d-flex flex-column gap-3 mt-4">
+          <button
+            className="btn btn-primary btn-lg"
+            onClick={() => setGameStarted(true)}
+          >
+            Casual Mode
+          </button>
+        </div>
         <div ref={centerRef} className="screen-center-anchor d-none"></div>
       </div>
     );
+  };
+
+  if (!gameStarted) {
+    return <MainMenu />;
   }
 
   return (
     <div className="container text-center position-relative">
       <div ref={centerRef} className="screen-center-anchor d-none"></div>
+
+      <div className="position-absolute top-0 start-0 m-2">
+        <button
+          className="btn btn-primary btn-lg"
+          onClick={() => {
+            setGameStarted(false);
+            setSelected([]);
+            setSelectedOperator(null);
+            setHistory([]);
+          }}
+        >
+          Back
+        </button>
+      </div>
 
       <div className="position-absolute top-0 end-0 m-2">
         <div className="form-check form-switch">
