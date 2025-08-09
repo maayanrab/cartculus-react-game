@@ -27,6 +27,7 @@ export default function App() {
   const [userInteracted, setUserInteracted] = useState(false);
   const [soundsOn, setSoundsOn] = useState(true);
   const [gameStarted, setGameStarted] = useState(false);
+  const [mode, setMode] = useState("casual"); // 'casual' | 'riddle' | 'solution'
 
   // Solution sharing/replay state
   const [solutionMoves, setSolutionMoves] = useState([]);
@@ -250,6 +251,26 @@ export default function App() {
     };
   }, [userInteracted]);
 
+  // Detect mode from URL once on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hasCards = params.get("cards");
+    const hasTarget = params.get("target");
+    const hasSolution = params.get("solution");
+    if (hasCards && hasTarget) {
+      if (hasSolution) {
+        setMode("solution");
+        setAutoReshuffle(false);
+      } else {
+        setMode("riddle");
+      }
+      // Auto-enter game for riddle/solution links
+      setGameStarted(true);
+    } else {
+      setMode("casual");
+    }
+  }, []);
+
   const playSound = (audio) => {
     if (userInteracted && audio && soundsOn) {
       audio.currentTime = 0;
@@ -412,7 +433,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (gameStarted && userInteracted) {
+    if (gameStarted) {
       const params = new URLSearchParams(window.location.search);
       const cardsParam = params.get("cards");
       const targetParam = params.get("target");
@@ -434,7 +455,7 @@ export default function App() {
         startNewRound(true);
       }
     }
-  }, [gameStarted, userInteracted]);
+  }, [gameStarted]);
 
   // Start replay once the new round finishes animating in
   useEffect(() => {
@@ -771,7 +792,15 @@ export default function App() {
         <div className="d-flex flex-column gap-3 mt-4">
           <button
             className="btn btn-primary btn-lg"
-            onClick={() => setGameStarted(true)}
+            onClick={() => {
+              // Clear any URL params so we enter a clean casual game
+              const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+              if (window.location.search) {
+                window.history.replaceState({}, document.title, cleanUrl);
+              }
+              setMode("casual");
+              setGameStarted(true);
+            }}
           >
             Casual Mode
           </button>
@@ -793,10 +822,30 @@ export default function App() {
         <button
           className="btn btn-primary btn-lg"
           onClick={() => {
+            // Return to main menu and fully reset transient state
             setGameStarted(false);
+            setIsReshuffling(false);
+            setNewCardsAnimatingIn(false);
+            setHandCardsFlipped(false);
+            setTargetCardFlipped(false);
+            setTarget(null);
+            setCurrentRoundTarget(null);
+            setCards([]);
+            setOriginalCards([]);
+            setHistory([]);
             setSelected([]);
             setSelectedOperator(null);
-            setHistory([]);
+            setSolutionMoves([]);
+            setHasWonCurrentRound(false);
+            setFrozenSolution(null);
+            setReplayPendingMoves(null);
+            setIsReplaying(false);
+            // Clear URL so casual mode won't reload a riddle/solution
+            const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+            if (window.location.search) {
+              window.history.replaceState({}, document.title, cleanUrl);
+            }
+            setMode("casual");
           }}
         >
           Back
@@ -833,7 +882,9 @@ export default function App() {
       <h1 className="text-start text-sm-center">
         CartCulus
       </h1>
-      <h5 className="text-start text-sm-center">Casual Mode</h5>
+      <h5 className="text-start text-sm-center">
+        {mode === "solution" ? "Solution Replay" : mode === "riddle" ? "Riddle" : "Casual Mode"}
+      </h5>
 
       {gameStarted && (
         <>
