@@ -50,6 +50,26 @@ export default function App() {
   const isReplayingRef = useRef(isReplaying);
   const flyingCardInfoRef = useRef(flyingCardInfo);
   const mergeResolveRef = useRef(null);
+  const isSharedRiddle = (() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const hasCards = !!params.get("cards");
+      const hasTarget = !!params.get("target");
+      const hasSolution = !!params.get("solution");
+      return hasCards && hasTarget && !hasSolution;
+    } catch {
+      return false;
+    }
+  })();
+  const isSharedSolution = (() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return !!params.get("solution");
+    } catch {
+      return false;
+    }
+  })();
+  const currentMode = isSharedSolution ? "solution" : isSharedRiddle ? "riddle" : "casual";
   useEffect(() => {
     cardsRef.current = cards;
   }, [cards]);
@@ -233,9 +253,7 @@ export default function App() {
         });
 
         setUserInteracted(true);
-        if (!gameStarted) {
-          setGameStarted(true);
-        }
+        // Do not auto-start the game here; only unlock audio.
 
         document.removeEventListener("click", handleInitialInteraction);
         document.removeEventListener("keydown", handleInitialInteraction);
@@ -769,7 +787,11 @@ export default function App() {
         <br />
 
         <p className="lead mb-4">
-          Use all four cards to reach the target value. Good luck!
+          {isSharedSolution
+            ? "This solution was shared by a friend."
+            : isSharedRiddle
+            ? "This riddle was sent by a friend."
+            : "Use all four cards to reach the target value. Good luck!"}
         </p>
 
         <div className="d-flex flex-column gap-3 mt-4">
@@ -777,7 +799,11 @@ export default function App() {
             className="btn btn-primary btn-lg"
             onClick={() => setGameStarted(true)}
           >
-            Casual Mode
+            {isSharedSolution
+              ? "Watch the solution"
+              : isSharedRiddle
+              ? "Take me to the riddle"
+              : "Casual Mode"}
           </button>
         </div>
         <div ref={centerRef} className="screen-center-anchor d-none"></div>
@@ -793,7 +819,7 @@ export default function App() {
     <div className="container text-center position-relative">
       <div ref={centerRef} className="screen-center-anchor d-none"></div>
 
-      {/* Back button - desktop/tablet: top-left */}
+      {/* Home button - desktop/tablet: top-left */}
       <div className="position-absolute top-0 start-0 m-2 d-none d-sm-block">
         <button
           className="btn btn-primary btn-lg"
@@ -808,6 +834,7 @@ export default function App() {
             setFlyingCardInfo(null);
             setCards([]);
             document.body.classList.remove("scrolling-disabled");
+            try { window.history.replaceState(null, "", window.location.pathname); } catch {}
             setGameStarted(false);
           }}
         >
@@ -815,7 +842,7 @@ export default function App() {
         </button>
       </div>
 
-      {/* Back button - small screens: top-center */}
+      {/* Home button - small screens: top-center */}
       <div className="position-absolute top-0 start-50 translate-middle-x mt-2 d-block d-sm-none">
         <button
           className="btn btn-primary btn-lg"
@@ -830,6 +857,7 @@ export default function App() {
             setFlyingCardInfo(null);
             setCards([]);
             document.body.classList.remove("scrolling-disabled");
+            try { window.history.replaceState(null, "", window.location.pathname); } catch {}
             setGameStarted(false);
           }}
         >
@@ -867,7 +895,13 @@ export default function App() {
       <h1 className="text-start text-sm-center">
         CartCulus
       </h1>
-      <h5 className="text-start text-sm-center">Casual Mode</h5>
+      <h5 className="text-start text-sm-center">
+        {currentMode === "solution"
+          ? "Solution Replay"
+          : currentMode === "riddle"
+          ? "Riddle"
+          : "Casual Mode"}
+      </h5>
 
       {gameStarted && (
         <>
