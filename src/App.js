@@ -23,7 +23,8 @@ export default function App() {
   const [selectedOperator, setSelectedOperator] = useState(null);
   const [originalCards, setOriginalCards] = useState([]);
   const [history, setHistory] = useState([]);
-  const [autoReshuffle, setAutoReshuffle] = useState(true);
+  // Default auto-reshuffle toggle: set to false (OFF). Change to true to default ON.
+  const [autoReshuffle, setAutoReshuffle] = useState(false);
   const [userInteracted, setUserInteracted] = useState(false);
   const [soundsOn, setSoundsOn] = useState(true);
   const [gameStarted, setGameStarted] = useState(false);
@@ -949,17 +950,6 @@ export default function App() {
 
       {gameStarted && (
         <>
-          {/* <div className="target my-4">
-            <div className="target-border-bs">
-              <span className="target-text-bs">TARGET</span>
-              <Card
-                value={currentRoundTarget}
-                isAbstract={currentRoundTarget < 1 || currentRoundTarget > 13}
-                isTarget={true}
-                isFlipped={!targetCardFlipped}
-              />
-            </div>
-          </div> */}
           <div className="d-flex flex-sm-row justify-content-center align-items-center my-4 gap-3 controls-target-wrapper">
 
             <div className="target">
@@ -1198,58 +1188,6 @@ export default function App() {
         ))}
       </div>
 
-      {/* <div className="controls d-flex justify-content-center gap-2">
-        <button
-          className="btn btn-info"
-          onClick={handleUndo}
-          disabled={
-            isReshuffling ||
-            newCardsAnimatingIn ||
-            !gameStarted ||
-            history.length === 0
-          }
-        >
-          Undo
-        </button>
-        <button
-          className="btn btn-warning"
-          onClick={handleReset}
-          disabled={
-            isReshuffling ||
-            newCardsAnimatingIn ||
-            !gameStarted ||
-            history.length === 0
-          }
-        >
-          Reset
-        </button>
-        <button
-          className="btn btn-success"
-          onClick={() => startNewRound(true)}
-          disabled={isReshuffling || newCardsAnimatingIn || !gameStarted}
-        >
-          Reshuffle
-        </button>
-        <button
-          className="btn btn-secondary"
-          onClick={() => {
-            const baseUrl = `${window.location.origin}${window.location.pathname}`;
-            const values = originalCards.map((c) => c.value);
-            const url = `${baseUrl}?cards=${values.join(",")}&target=${target}`;
-            navigator
-              .share({
-                title: "Check out this CartCulus riddle!",
-                url: url,
-              })
-              .catch((err) => {
-                console.error("Error sharing:", err);
-              });
-          }}
-          disabled={originalCards.length < 4 || target == null}
-        >
-          Share Riddle
-        </button>
-      </div> */}
     </div>
   );
 }
