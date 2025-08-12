@@ -52,6 +52,7 @@ export default function App() {
   const mergeResolveRef = useRef(null);
   const replayInitialCardsRef = useRef(null);
   const replayInitialTargetRef = useRef(null);
+  const replaySessionIdRef = useRef(0);
   const isSharedRiddle = (() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -124,10 +125,19 @@ export default function App() {
   };
   const replaySolution = async (moves) => {
     if (!Array.isArray(moves) || moves.length === 0) return;
+    const sessionId = ++replaySessionIdRef.current;
     setIsReplaying(true);
     // Ensure any initial animations are done
     await waitForMergeToFinish();
+    if (sessionId !== replaySessionIdRef.current) {
+      setIsReplaying(false);
+      return;
+    }
     for (let i = 0; i < moves.length; i++) {
+      if (sessionId !== replaySessionIdRef.current) {
+        setIsReplaying(false);
+        return;
+      }
       const step = moves[i];
       // Prefer slot-based addressing for deterministic replays
       let cardA;
@@ -177,8 +187,13 @@ export default function App() {
     }
     setIsReplaying(false);
     // After finishing, loop replay after a longer pause
-    if (replayInitialCardsRef.current && replayInitialTargetRef.current) {
+    if (
+      sessionId === replaySessionIdRef.current &&
+      replayInitialCardsRef.current &&
+      replayInitialTargetRef.current
+    ) {
       await new Promise((r) => setTimeout(r, 3000));
+      if (sessionId !== replaySessionIdRef.current) return;
       setReplayPendingMoves(moves);
       startNewRound(false, replayInitialCardsRef.current, replayInitialTargetRef.current);
     }
@@ -852,6 +867,7 @@ export default function App() {
           className="btn btn-primary btn-lg"
           onClick={() => {
             setIsReplaying(false);
+            replaySessionIdRef.current += 1; // cancel any queued replay loops
             setReplayPendingMoves(null);
             setSelected([]);
             setSelectedOperator(null);
@@ -875,6 +891,7 @@ export default function App() {
           className="btn btn-primary btn-lg"
           onClick={() => {
             setIsReplaying(false);
+            replaySessionIdRef.current += 1; // cancel any queued replay loops
             setReplayPendingMoves(null);
             setSelected([]);
             setSelectedOperator(null);
