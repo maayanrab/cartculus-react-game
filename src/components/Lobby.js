@@ -54,10 +54,10 @@ export default function Lobby({ onJoined, fullScreen = false }) {
           <input className="form-control" value={name} onChange={(e) => setName(e.target.value)} placeholder="" />
         </div>
 
-        <div className="mb-2">
+        <div className="mb-2 text-center">
           <label className="form-label">Create Room</label>
           <input className="form-control form-control-sm mb-1" placeholder="Room display name (required)" value={roomName} onChange={(e) => setRoomName(e.target.value)} />
-          <div className="d-flex gap-2">
+          <div className="d-flex justify-content-center mt-2">
             <button className="btn btn-success btn-sm" onClick={createRoom} disabled={!name || !roomName}>Create & Join</button>
           </div>
         </div>
@@ -73,7 +73,7 @@ export default function Lobby({ onJoined, fullScreen = false }) {
               </li>
             ))}
           </ul>
-          <div className="mt-2 d-flex justify-content-between">
+          <div className="mt-2 d-flex justify-content-center">
             <button className="btn btn-outline-secondary btn-sm" onClick={() => socket.requestRooms()}>Refresh</button>
           </div>
         </div>

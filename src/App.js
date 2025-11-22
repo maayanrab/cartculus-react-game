@@ -1332,7 +1332,7 @@ export default function App() {
     // and keeps a Home button visible so the user can cancel.
     if (showMultiplayer) {
       return (
-        <div className="container text-center position-relative" style={{ minHeight: '100vh', paddingTop: '4rem' }}>
+        <div className="container text-center position-relative" style={{ minHeight: '100vh', paddingTop: '2rem' }}>
           {/* Home button while in Lobby so player can cancel/return (positioned relative to the container)
               This ensures it aligns like the in-match Home button instead of being pinned to the viewport. */}
           <div className="position-absolute top-0 start-0 m-2 d-none d-sm-block">
@@ -1341,6 +1341,18 @@ export default function App() {
           <div className="position-absolute top-0 start-50 translate-middle-x mt-2 d-block d-sm-none">
             <button className="btn btn-primary btn-lg" onClick={handleGoHome}>🏠︎</button>
           </div>
+
+          <h1 className="text-start text-sm-center">
+            CartCulus
+          </h1>
+          <h5 className="text-start text-sm-center">
+            {currentMode === "solution"
+              ? "Solution Replay"
+              : currentMode === "riddle"
+              ? "Riddle"
+              : "‏"
+            }
+          </h5>
 
           {/* If not yet in a room, show the full-screen Lobby; once joined, hide the creation panel and show only the room/player list */}
           {!multiplayerRoom && <Lobby fullScreen={true} onJoined={handleJoined} />}
