@@ -107,19 +107,34 @@ io.on("connection", (socket) => {
   });
 
   socket.on("play_move", ({ roomId, playerId, move }) => {
-    const awarded = rooms.playerFinished(roomId, playerId);
+    const room = rooms.getRoom(roomId);
+    let isNoSolutionChallenge = false;
+    
+    // Check if this is solving someone else's "no solution" challenge
+    if (room && room.noSolution && room.noSolution.originPlayerId !== playerId) {
+      isNoSolutionChallenge = true;
+    }
+    
+    const awarded = rooms.playerFinished(roomId, playerId, isNoSolutionChallenge);
     // If someone finished while a no-solution or reveal timer was active, cancel it
     try {
-      const room = rooms.getRoom(roomId);
       if (room && room.noSolution) {
         // If solver is not the origin, cancel the noSolution timer (solver stole points)
         if (room.noSolution.originPlayerId !== playerId) {
           const originId = room.noSolution.originPlayerId;
           rooms.cancelNoSolution(roomId);
-          // Mark origin as round-finished (they wait without cards)
+          // Mark origin as round-finished (they wait without cards until next round)
           rooms.markPlayerRoundFinished(roomId, originId);
           io.to(roomId).emit("no_solution_timer", { originPlayerId: originId, skipped: false, resolvedBy: playerId });
-          // Don't restore hands here - players keep their current hands and continue playing
+          
+          // If solver hasn't finished their own round yet, restore their original cards so they can continue
+          // If solver already finished, they stay without cards (correct behavior)
+          const solver = Array.from(room.players.values()).find((p) => p.playerId === playerId);
+          if (solver && !solver.roundFinished) {
+            const state = rooms.getStateForRoom(roomId, playerId);
+            io.to(socket.id).emit("state_sync", state);
+          }
+          // Other players keep their current hands and continue playing
         }
       }
       if (room && room.reveal) {
@@ -137,12 +152,17 @@ io.on("connection", (socket) => {
       console.error("error handling timers on play_move", e);
     }
 
-    // After a player solves, they wait without cards (no state_sync sent)
-    // They will get their original hand back only after everyone else finishes
+    // After a player solves, handle differently based on whether it's their own cards or a "no solution" challenge
     if (awarded) {
       io.to(roomId).emit("score_update", { scores: rooms.getScores(roomId), awardedTo: awarded });
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-      // Don't restore solver's hand - they wait until everyone finishes
+      
+      // If solving own cards, they wait without cards
+      // If solving someone else's "no solution" challenge, they might get their original cards back
+      // (handled above in the noSolution section)
+      if (!isNoSolutionChallenge) {
+        // Don't restore solver's hand - they wait until everyone finishes
+      }
     }
 
     // If all players finished their round (roundFinished === true), start a fresh round after a short delay

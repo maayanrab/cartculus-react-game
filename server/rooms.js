@@ -127,11 +127,15 @@ class Rooms {
     return { cards: myHand, target: room.deal?.target || null, scores: room.scores || {} };
   }
 
-  playerFinished(roomId, playerId) {
+  playerFinished(roomId, playerId, isNoSolutionChallenge = false) {
     const room = this.rooms.get(roomId);
     if (!room) return null;
     const player = Array.from(room.players.values()).find((p) => p.playerId === playerId) || null;
-    if (!player || player.roundFinished) return null; // Can't solve if round is finished
+    if (!player) return null;
+    
+    // If solving own cards and already roundFinished, can't solve
+    // But if solving someone else's "no solution" challenge, allow it even if roundFinished
+    if (!isNoSolutionChallenge && player.roundFinished) return null;
     
     // Count how many total solves have happened across all players (for points order)
     const totalSolves = Array.from(room.players.values()).reduce((sum, p) => sum + (p.solvedCount || 0), 0);
@@ -143,9 +147,12 @@ class Rooms {
     player.solvedCount = (player.solvedCount || 0) + 1;
     player.finishedStatus = 'solved'; // For backward compatibility
     
-    // Mark player as round-finished - they wait until everyone else finishes
-    // They don't get their original hand back, they're done for this round
-    this.markPlayerRoundFinished(roomId, playerId);
+    // If solving own cards, mark as round-finished
+    // If solving someone else's "no solution" challenge, don't mark as roundFinished
+    // (they might get their original cards back to continue playing)
+    if (!isNoSolutionChallenge) {
+      this.markPlayerRoundFinished(roomId, playerId);
+    }
     
     return playerId;
   }
