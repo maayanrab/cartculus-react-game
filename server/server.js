@@ -116,7 +116,10 @@ io.on("connection", (socket) => {
         if (room.noSolution.originPlayerId !== playerId) {
           const originId = room.noSolution.originPlayerId;
           rooms.cancelNoSolution(roomId);
+          // Mark origin as round-finished (they wait without cards)
+          rooms.markPlayerRoundFinished(roomId, originId);
           io.to(roomId).emit("no_solution_timer", { originPlayerId: originId, skipped: false, resolvedBy: playerId });
+          // Don't restore hands here - players keep their current hands and continue playing
         }
       }
       if (room && room.reveal) {
@@ -124,42 +127,38 @@ io.on("connection", (socket) => {
         if (room.reveal.originPlayerId !== playerId) {
           const originId = room.reveal.originPlayerId;
           rooms.cancelReveal(roomId);
+          // Mark origin as round-finished (they wait without cards)
+          rooms.markPlayerRoundFinished(roomId, originId);
           io.to(roomId).emit("reveal_timer", { originPlayerId: originId, skipped: false, resolvedBy: playerId });
+          // Don't restore hands here - players keep their current hands and continue playing
         }
       }
     } catch (e) {
       console.error("error handling timers on play_move", e);
     }
 
-    // Emit per-player state sync so each client receives their own hand
-    try {
-      const room = rooms.getRoom(roomId);
-      if (room) {
-        for (const p of room.players.values()) {
-          const state = rooms.getStateForRoom(roomId, p.playerId);
-          io.to(p.socketId).emit("state_sync", state);
-        }
-      }
-    } catch (e) {
-      console.error('error emitting per-player state_sync on play_move', e);
-      // Fallback: send generic state to everyone
-      io.to(roomId).emit("state_sync", rooms.getStateForRoom(roomId, playerId));
-    }
+    // After a player solves, they wait without cards (no state_sync sent)
+    // They will get their original hand back only after everyone else finishes
     if (awarded) {
       io.to(roomId).emit("score_update", { scores: rooms.getScores(roomId), awardedTo: awarded });
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+      // Don't restore solver's hand - they wait until everyone finishes
     }
 
-    // If all players finished, start a fresh round after a short delay
+    // If all players finished their round (roundFinished === true), start a fresh round after a short delay
     try {
       const room = rooms.getRoom(roomId);
       if (room) {
-        const allFinished = Array.from(room.players.values()).every((p) => p.finished);
-        if (allFinished) {
+        const players = Array.from(room.players.values());
+        const allFinished = players.length > 0 && players.every((p) => p.roundFinished === true);
+        // Double-check: make sure we have players and all are truly finished
+        if (allFinished && players.length === room.players.size) {
+          console.log(`[${roomId}] All players finished, starting new round. Players:`, players.map(p => ({ id: p.playerId, name: p.name, roundFinished: p.roundFinished })));
           setTimeout(() => {
             const deal = rooms.startGame(roomId);
             // Use pending/reveal flow for auto-start as well
             const r = rooms.getRoom(roomId);
+            if (!r) return; // Room might have been deleted
             r.pendingDeal = deal.publicDeal;
             r.pendingDealLoaded = new Set();
             if (r.pendingDealTimeout) {
@@ -182,6 +181,10 @@ io.on("connection", (socket) => {
             }, 8000);
             io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
           }, 1500);
+        } else {
+          // Debug log when not all finished
+          const finishedCount = players.filter(p => p.roundFinished === true).length;
+          console.log(`[${roomId}] Not all players finished yet. Finished: ${finishedCount}/${players.length}. Players:`, players.map(p => ({ id: p.playerId, name: p.name, roundFinished: p.roundFinished })));
         }
       }
     } catch (e) {
@@ -192,7 +195,7 @@ io.on("connection", (socket) => {
     try {
       const room = rooms.getRoom(roomId);
       if (room) {
-        const unfinished = Array.from(room.players.values()).filter((p) => !p.finished);
+        const unfinished = Array.from(room.players.values()).filter((p) => !p.roundFinished);
         if (unfinished.length === 1) {
           const remainingId = unfinished[0].playerId;
           rooms.startRevealTimer(roomId, remainingId, (result) => {
@@ -219,7 +222,10 @@ io.on("connection", (socket) => {
         try {
           const room = rooms.getRoom(roomId);
           if (room) {
+            const originId = result.broadcast && result.broadcast.originPlayerId;
             for (const p of room.players.values()) {
+              // Do not restore the origin player's hand here; the origin remains waiting until next round
+              if (p.playerId === originId) continue;
               const state = rooms.getStateForRoom(roomId, p.playerId);
               io.to(p.socketId).emit("state_sync", state);
             }
@@ -229,6 +235,42 @@ io.on("connection", (socket) => {
         }
       }
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+      // If all players are finished now, start next round
+      try {
+        const room = rooms.getRoom(roomId);
+        if (room) {
+          const allFinished = Array.from(room.players.values()).every((p) => p.roundFinished === true);
+          if (allFinished) {
+            setTimeout(() => {
+              const deal = rooms.startGame(roomId);
+              const r = rooms.getRoom(roomId);
+              r.pendingDeal = deal.publicDeal;
+              r.pendingDealLoaded = new Set();
+              if (r.pendingDealTimeout) {
+                clearTimeout(r.pendingDealTimeout);
+                r.pendingDealTimeout = null;
+              }
+              for (const p of r.players.values()) {
+                const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
+                io.to(p.socketId).emit("deal_pending", { roomId, hand, target: deal.publicDeal.target });
+              }
+              io.to(roomId).emit("pending_status", { loadedCount: 0, total: r.players.size });
+              r.pendingDealTimeout = setTimeout(() => {
+                if (r && r.pendingDeal) {
+                  io.to(roomId).emit("deal_riddle", r.pendingDeal);
+                  r.pendingDeal = null;
+                  r.pendingDealLoaded = null;
+                  r.pendingDealTimeout = null;
+                  io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+                }
+              }, 8000);
+              io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+            }, 1500);
+          }
+        }
+      } catch (e) {
+        console.error('error auto-starting next round after no_solution', e);
+      }
     });
 
     io.to(roomId).emit("no_solution_timer", rooms.getNoSolutionTimerPublic(roomId));
@@ -246,15 +288,53 @@ io.on("connection", (socket) => {
       try {
         const room = rooms.getRoom(roomId);
         if (room) {
-          for (const p of room.players.values()) {
-            const state = rooms.getStateForRoom(roomId, p.playerId);
-            io.to(p.socketId).emit("state_sync", state);
-          }
+            for (const p of room.players.values()) {
+              // Do not restore origin's hand to the origin; origin stays waiting until next round
+              if (p.playerId === originPlayerId) continue;
+              const state = rooms.getStateForRoom(roomId, p.playerId);
+              io.to(p.socketId).emit("state_sync", state);
+            }
         }
       } catch (e) {
         console.error('error emitting state_sync after skip finish', e);
       }
       io.to(roomId).emit("no_solution_timer", result.broadcast);
+      // If all players are finished now, start next round
+      try {
+        const room = rooms.getRoom(roomId);
+        if (room) {
+          const allFinished = Array.from(room.players.values()).every((p) => p.roundFinished === true);
+          if (allFinished) {
+            setTimeout(() => {
+              const deal = rooms.startGame(roomId);
+              const r = rooms.getRoom(roomId);
+              r.pendingDeal = deal.publicDeal;
+              r.pendingDealLoaded = new Set();
+              if (r.pendingDealTimeout) {
+                clearTimeout(r.pendingDealTimeout);
+                r.pendingDealTimeout = null;
+              }
+              for (const p of r.players.values()) {
+                const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
+                io.to(p.socketId).emit("deal_pending", { roomId, hand, target: deal.publicDeal.target });
+              }
+              io.to(roomId).emit("pending_status", { loadedCount: 0, total: r.players.size });
+              r.pendingDealTimeout = setTimeout(() => {
+                if (r && r.pendingDeal) {
+                  io.to(roomId).emit("deal_riddle", r.pendingDeal);
+                  r.pendingDeal = null;
+                  r.pendingDealLoaded = null;
+                  r.pendingDealTimeout = null;
+                  io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+                }
+              }, 8000);
+              io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+            }, 1500);
+          }
+        }
+      } catch (e) {
+        console.error('error auto-starting next round after skip', e);
+      }
     }
   });
 

@@ -25,15 +25,13 @@ export default function Lobby({ onJoined, fullScreen = false }) {
   };
 
   const wrapperStyle = fullScreen
-    ? { maxWidth: 420, background: 'white', padding: 20, borderRadius: 8 }
+    ? { maxWidth: 420, background: 'white', padding: 20, borderRadius: 8, margin: '0 auto' }
     : { right: 16, top: 80, width: 300, background: 'white', zIndex: 2000 };
 
   if (fullScreen) {
     return (
-      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: '100vh' }}>
-        <div className="lobby p-3 border rounded" style={wrapperStyle}>
-          {InnerLobbyContent()}
-        </div>
+      <div className="lobby p-3 border rounded mt-3" style={wrapperStyle}>
+        {InnerLobbyContent()}
       </div>
     );
   }

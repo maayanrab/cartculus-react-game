@@ -73,6 +73,9 @@ export default function App() {
   const replayInitialTargetRef = useRef(null);
   const replaySessionIdRef = useRef(0);
   const tempHandBackupRef = useRef(null);
+  const pendingDealRef = useRef(null);
+  const pendingRiddleRef = useRef(null);
+  const waitingForOthersAfterWinRef = useRef(waitingForOthersAfterWin);
   const isSharedRiddle = (() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -107,6 +110,28 @@ export default function App() {
   useEffect(() => {
     isReplayingRef.current = isReplaying;
   }, [isReplaying]);
+  useEffect(() => {
+    waitingForOthersAfterWinRef.current = waitingForOthersAfterWin;
+    // If we've just cleared the waiting state, process any pending queued deals
+    if (!waitingForOthersAfterWin && pendingDealRef.current) {
+      try {
+        const d = pendingDealRef.current;
+        pendingDealRef.current = null;
+        processDealPending(d);
+      } catch (e) {
+        console.error('error processing queued deal_pending', e);
+      }
+    }
+    if (!waitingForOthersAfterWin && pendingRiddleRef.current) {
+      try {
+        const r = pendingRiddleRef.current;
+        pendingRiddleRef.current = null;
+        processDealRiddle(r);
+      } catch (e) {
+        console.error('error processing queued deal_riddle', e);
+      }
+    }
+  }, [waitingForOthersAfterWin]);
   useEffect(() => {
     flyingCardInfoRef.current = flyingCardInfo;
   }, [flyingCardInfo]);
@@ -349,7 +374,8 @@ export default function App() {
       setHostId(data.hostId || null);
     });
 
-    socket.on("deal_riddle", (data) => {
+    // helper: process an incoming reveal (deal_riddle)
+    const processDealRiddle = (data) => {
       // reveal moment: stop waiting UI
       setWaitingForOthers(false);
       setWaitingForOthersAfterWin(false);
@@ -365,17 +391,34 @@ export default function App() {
           // Fallback to immediate set if animation fails
           const finalCards = myHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
           setCards(finalCards);
-              // Preserve the original card ids for multiplayer so Reset can rebuild correct ids
-              setOriginalCards(myHand);
+          // Preserve the original card ids for multiplayer so Reset can rebuild correct ids
+          setOriginalCards(myHand);
           setTarget(data.target);
           setCurrentRoundTarget(data.target);
           setGameStarted(true);
         }
       })();
+    };
+
+    socket.on("deal_riddle", (data) => {
+      // If this client is currently waiting for others after finishing, queue the reveal
+      if (waitingForOthersAfterWinRef.current) {
+        pendingRiddleRef.current = data;
+        return;
+      }
+      // Only process deal_riddle if we're not actively playing with cards
+      // This should only happen at round start, not when someone else solves
+      // If we have cards and are not in a reshuffle animation, this is likely a spurious event
+      const hasActiveCards = cards.length > 0 && cards.some(c => !c.invisible && !c.isPlaceholder);
+      if (hasActiveCards && !isReshuffling && !newCardsAnimatingIn && gameStarted && !waitingForOthers) {
+        console.warn("Received deal_riddle while actively playing - ignoring to prevent interrupting gameplay");
+        return;
+      }
+      processDealRiddle(data);
     });
 
-    // When server sends a pending deal, load the cards face-down and ack when ready.
-    socket.on("deal_pending", (data) => {
+    // helper: process a pending deal
+    const processDealPending = (data) => {
       try {
         const myHand = data.hand || [];
         // Load cards into state but keep them face-down (handCardsFlipped false, targetCardFlipped false)
@@ -401,6 +444,16 @@ export default function App() {
       } catch (e) {
         console.error("error handling deal_pending", e);
       }
+    };
+
+    // When server sends a pending deal, load the cards face-down and ack when ready.
+    socket.on("deal_pending", (data) => {
+      // If currently waiting after finishing, queue the pending deal until the round fully completes
+      if (waitingForOthersAfterWinRef.current) {
+        pendingDealRef.current = data;
+        return;
+      }
+      processDealPending(data);
     });
 
     socket.on("reveal_timer", (payload) => {
@@ -408,34 +461,35 @@ export default function App() {
     });
 
     socket.on("state_sync", (state) => {
-      // For state_sync, animate in the provided cards/target similarly
+      // For state_sync, restore the player's original hand silently (no animations)
+      // This happens after "no solution" resolves to restore original hands
+      // When a player solves, they should NOT receive state_sync (they wait without cards)
       if (state && state.cards && state.cards.length > 0) {
-        (async () => {
-          try {
-            await playIncomingDeal(state.cards, state.target);
-            if (state.scores) setScores(state.scores);
-            setWaitingForOthersAfterWin(false);
-          } catch (e) {
-            console.error("playIncomingDeal failed (state_sync)", e);
-            const finalCards = state.cards.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
-            setCards(finalCards);
-              // Keep the full card objects (including ids) so Reset/Undo work correctly
-              setOriginalCards(state.cards || []);
-            if (state.target) {
-              setTarget(state.target);
-              setCurrentRoundTarget(state.target);
-            }
-            if (state.scores) setScores(state.scores);
-            setGameStarted(true);
-            setWaitingForOthersAfterWin(false);
-          }
-        })();
+        // Always restore silently without animation - state_sync is for restoring hands,
+        // not for new deals (new deals use deal_pending/deal_riddle)
+        const finalCards = state.cards.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
+        setCards(finalCards);
+        // Keep the full card objects (including ids) so Reset/Undo work correctly
+        setOriginalCards(state.cards || []);
+        if (state.target) {
+          setTarget(state.target);
+          setCurrentRoundTarget(state.target);
+        }
+        if (state.scores) setScores(state.scores);
+        setGameStarted(true);
+        setWaitingForOthersAfterWin(false);
+        setHasWonCurrentRound(false);
+        setHistory([]); // Clear history for fresh start
+        setSolutionMoves([]); // Clear solution moves
+        setSelected([]);
+        setSelectedOperator(null);
       } else {
         if (state.target) {
           setTarget(state.target);
           setCurrentRoundTarget(state.target);
         }
         if (state.scores) setScores(state.scores);
+        setWaitingForOthersAfterWin(false);
       }
     });
 
@@ -444,7 +498,7 @@ export default function App() {
     socket.on("reveal_timer", (payload) => setNoSolutionTimer(payload));
 
     // Ensure that when the no-solution is resolved (skipped/expired/resolvedBy)
-    // we restore non-origin players' hands if they were temporarily swapped.
+    // we handle restoration. The server will send state_sync to non-origin players.
     socket.on("no_solution_timer", (payload) => {
       setNoSolutionTimer(payload);
       try {
@@ -453,13 +507,15 @@ export default function App() {
         const isOrigin = myId && payload.originPlayerId === myId;
         const finished = payload.expired || payload.skipped || payload.resolvedBy;
         if (finished) {
-          // restore only for players who had their hand temporarily swapped
-          if (!isOrigin && tempHandBackupRef.current) {
-            setCards(tempHandBackupRef.current.cards || []);
-            setOriginalCards(tempHandBackupRef.current.original || []);
+          // Origin player waits without cards - server won't send state_sync to them
+          if (isOrigin) {
+            setCards([]);
+            setOriginalCards([]);
+            setWaitingForOthersAfterWin(true);
             tempHandBackupRef.current = null;
           }
-          // clear timer shortly after restoring to allow UX to show final state
+          // Non-origin players will get state_sync from server to restore their original hands
+          // Clear timer shortly after to allow UX to show final state
           setTimeout(() => setNoSolutionTimer(null), 1200);
         }
       } catch (e) {
@@ -473,11 +529,11 @@ export default function App() {
         const awardedTo = payload && payload.awardedTo;
         const myId = socket.getSocketId();
         if (awardedTo && myId && awardedTo === myId) {
-          // I was awarded points — play celebration and remove my hand while waiting
+          // I was awarded points — play celebration and wait for others
           try { confetti(); } catch {}
           try { playSound(successSound); } catch {}
           setHasWonCurrentRound(true);
-          // show waiting text instead of my hand while others finish
+          // Clear cards and show waiting message - player waits until everyone else finishes
           setCards([]);
           setOriginalCards([]);
           setWaitingForOthersAfterWin(true);
@@ -507,19 +563,38 @@ export default function App() {
   // get the origin player's hand to attempt solving. Restore when timer ends.
   useEffect(() => {
     if (!noSolutionTimer) {
-      // restore if we had a temporary hand
+      // restore if we had a temporary hand (only for non-origin players)
       if (tempHandBackupRef.current) {
-        setCards(tempHandBackupRef.current.cards || []);
-        setOriginalCards(tempHandBackupRef.current.original || []);
+        const currentId = socket.getSocketId();
+        // Only restore if we're not the origin player (origin waits without cards)
+        // The server will send state_sync to non-origin players to restore their hands
+        // So we only restore from backup if state_sync hasn't arrived yet
+        if (currentId) {
+          setCards(tempHandBackupRef.current.cards || []);
+          setOriginalCards(tempHandBackupRef.current.original || []);
+        }
         tempHandBackupRef.current = null;
       }
       return;
     }
-    // If the timer payload indicates the timer finished (expired/skipped/resolved), restore and clear
+    // If the timer payload indicates the timer finished (expired/skipped/resolved), handle restoration
     if (noSolutionTimer.expired || noSolutionTimer.skipped || noSolutionTimer.resolvedBy) {
-      if (tempHandBackupRef.current) {
+      const currentId = socket.getSocketId();
+      const originId = noSolutionTimer.originPlayerId;
+      const isOrigin = currentId && originId && currentId === originId;
+      
+      // Origin player waits without cards - don't restore
+      // Non-origin players will get state_sync from server to restore their original hands
+      if (!isOrigin && tempHandBackupRef.current) {
+        // Temporary restore until state_sync arrives (which will properly restore)
         setCards(tempHandBackupRef.current.cards || []);
         setOriginalCards(tempHandBackupRef.current.original || []);
+        tempHandBackupRef.current = null;
+      } else if (isOrigin) {
+        // Origin player: ensure cards stay cleared and show waiting message
+        setCards([]);
+        setOriginalCards([]);
+        setWaitingForOthersAfterWin(true);
         tempHandBackupRef.current = null;
       }
       // clear the timer UI after handling
@@ -1519,6 +1594,12 @@ export default function App() {
                   className="img-button reshuffle-btn"
                   onClick={() => {
                     try { socket.emitDeclareNoSolution(multiplayerRoom, socket.getSocketId()); } catch (e) { console.error(e); }
+                    // I declared no-solution: remove my hand locally and wait for others
+                    try {
+                      setCards([]);
+                      setOriginalCards([]);
+                      setWaitingForOthersAfterWin(true);
+                    } catch (e) {}
                   }}
                   disabled={
                     isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying || (players.find(p => p.playerId === socket.getSocketId()) || {}).finished
