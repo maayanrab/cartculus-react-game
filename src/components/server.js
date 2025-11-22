@@ -11,6 +11,79 @@ const io = new Server(server, {
 
 const rooms = new Rooms();
 
+/**
+ * Helper: start a new round for a room (deal 4 cards + shared target to everyone)
+ */
+function startNewRoundForRoom(roomId) {
+  const deal = rooms.startGame(roomId);
+  const room = rooms.getRoom(roomId);
+  if (!room) return;
+
+  room.pendingDeal = deal.publicDeal;
+  room.pendingDealLoaded = new Set();
+
+  if (room.pendingDealTimeout) {
+    clearTimeout(room.pendingDealTimeout);
+    room.pendingDealTimeout = null;
+  }
+
+  // Send each player only their hand (face-down animation on client)
+  for (const p of room.players.values()) {
+    const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
+    io.to(p.socketId).emit("deal_pending", {
+      roomId,
+      hand,
+      target: deal.publicDeal.target,
+    });
+  }
+
+  io.to(roomId).emit("pending_status", {
+    loadedCount: 0,
+    total: room.players.size,
+  });
+
+  room.pendingDealTimeout = setTimeout(() => {
+    const r = rooms.getRoom(roomId);
+    if (r && r.pendingDeal) {
+      io.to(roomId).emit("deal_riddle", r.pendingDeal);
+      r.pendingDeal = null;
+      r.pendingDealLoaded = null;
+      r.pendingDealTimeout = null;
+      io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+    }
+  }, 8000);
+
+  io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+}
+
+/**
+ * Helper: if (and only if) all players in the room are in "waiting" state,
+ * schedule a new round (multiplayer).
+ */
+function scheduleNewRoundIfAllWaiting(roomId) {
+  const room = rooms.getRoom(roomId);
+  if (!room) return;
+
+  // Don't start another round if one is already queued/dealing
+  if (room.pendingDeal) return;
+
+  // Avoid double timers
+  if (room.autoNextRoundTimeout) return;
+
+  if (!rooms.areAllPlayersWaiting(roomId)) return;
+
+  room.autoNextRoundTimeout = setTimeout(() => {
+    const currentRoom = rooms.getRoom(roomId);
+    if (!currentRoom) return;
+    currentRoom.autoNextRoundTimeout = null;
+
+    // Re-check condition at fire time (players may have changed)
+    if (!rooms.areAllPlayersWaiting(roomId)) return;
+
+    startNewRoundForRoom(roomId);
+  }, 1500);
+}
+
 io.on("connection", (socket) => {
   console.log("socket connected:", socket.id);
 
@@ -95,42 +168,7 @@ io.on("connection", (socket) => {
     // only host may start game
     if (room.host !== socket.id) return;
 
-    const deal = rooms.startGame(roomId);
-
-    room.pendingDeal = deal.publicDeal;
-    room.pendingDealLoaded = new Set();
-
-    if (room.pendingDealTimeout) {
-      clearTimeout(room.pendingDealTimeout);
-      room.pendingDealTimeout = null;
-    }
-
-    // Send each player only their hand (face-down animation on client)
-    for (const p of room.players.values()) {
-      const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
-      io.to(p.socketId).emit("deal_pending", {
-        roomId,
-        hand,
-        target: deal.publicDeal.target,
-      });
-    }
-
-    io.to(roomId).emit("pending_status", {
-      loadedCount: 0,
-      total: room.players.size,
-    });
-
-    room.pendingDealTimeout = setTimeout(() => {
-      if (room && room.pendingDeal) {
-        io.to(roomId).emit("deal_riddle", room.pendingDeal);
-        room.pendingDeal = null;
-        room.pendingDealLoaded = null;
-        room.pendingDealTimeout = null;
-        io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-      }
-    }, 8000);
-
-    io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+    startNewRoundForRoom(roomId);
   });
 
   socket.on("play_move", ({ roomId, playerId, move }) => {
@@ -195,68 +233,24 @@ io.on("connection", (socket) => {
       }
     }
 
-    // If all players finished their round, start a fresh round after a short delay
+    // NEW: If all players are in "waiting" state, start next round
     try {
-      const room = rooms.getRoom(roomId);
-      if (room) {
-        const players = Array.from(room.players.values());
-        const allFinished =
-          players.length > 0 &&
-          players.every((p) => p.roundFinished === true);
-        if (allFinished && players.length === room.players.size) {
-          setTimeout(() => {
-            const deal = rooms.startGame(roomId);
-            const r = rooms.getRoom(roomId);
-            if (!r) return;
-            r.pendingDeal = deal.publicDeal;
-            r.pendingDealLoaded = new Set();
-            if (r.pendingDealTimeout) {
-              clearTimeout(r.pendingDealTimeout);
-              r.pendingDealTimeout = null;
-            }
-            for (const p of r.players.values()) {
-              const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
-              io.to(p.socketId).emit("deal_pending", {
-                roomId,
-                hand,
-                target: deal.publicDeal.target,
-              });
-            }
-            io.to(roomId).emit("pending_status", {
-              loadedCount: 0,
-              total: r.players.size,
-            });
-            r.pendingDealTimeout = setTimeout(() => {
-              if (r && r.pendingDeal) {
-                io.to(roomId).emit("deal_riddle", r.pendingDeal);
-                r.pendingDeal = null;
-                r.pendingDealLoaded = null;
-                r.pendingDealTimeout = null;
-                io.to(roomId).emit(
-                  "lobby_update",
-                  rooms.getRoomPublic(roomId)
-                );
-              }
-            }, 8000);
-            io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-          }, 1500);
-        }
-      }
+      scheduleNewRoundIfAllWaiting(roomId);
     } catch (e) {
       console.error("error auto-starting next round", e);
     }
 
     // After someone finishes, if only one player remains with a live hand, start reveal timer
     try {
-      const room = rooms.getRoom(roomId);
-      if (room) {
-        const unfinished = Array.from(room.players.values()).filter(
+      const roomAfter = rooms.getRoom(roomId);
+      if (roomAfter) {
+        const unfinished = Array.from(roomAfter.players.values()).filter(
           (p) => !p.roundFinished
         );
         if (unfinished.length === 1) {
           const remainingId = unfinished[0].playerId;
 
-          // 👉 CHANGED: when reveal timer expires with no solver, start new round with no points
+          // When reveal timer expires with no solver, start new round with no points
           rooms.startRevealTimer(roomId, remainingId, (result) => {
             io.to(roomId).emit("reveal_timer", result.broadcast);
             if (result.awardedTo) {
@@ -271,48 +265,7 @@ io.on("connection", (socket) => {
             if (!result.awardedTo && result.broadcast && result.broadcast.expired) {
               try {
                 setTimeout(() => {
-                  const deal = rooms.startGame(roomId);
-                  const r = rooms.getRoom(roomId);
-                  if (!r) return;
-                  r.pendingDeal = deal.publicDeal;
-                  r.pendingDealLoaded = new Set();
-                  if (r.pendingDealTimeout) {
-                    clearTimeout(r.pendingDealTimeout);
-                    r.pendingDealTimeout = null;
-                  }
-                  for (const p of r.players.values()) {
-                    const hand =
-                      deal.publicDeal.perPlayerHands[p.playerId] || [];
-                    io.to(p.socketId).emit("deal_pending", {
-                      roomId,
-                      hand,
-                      target: deal.publicDeal.target,
-                    });
-                  }
-                  io.to(roomId).emit("pending_status", {
-                    loadedCount: 0,
-                    total: r.players.size,
-                  });
-                  r.pendingDealTimeout = setTimeout(() => {
-                    const roomAfter = rooms.getRoom(roomId);
-                    if (roomAfter && roomAfter.pendingDeal) {
-                      io.to(roomId).emit(
-                        "deal_riddle",
-                        roomAfter.pendingDeal
-                      );
-                      roomAfter.pendingDeal = null;
-                      roomAfter.pendingDealLoaded = null;
-                      roomAfter.pendingDealTimeout = null;
-                      io.to(roomId).emit(
-                        "lobby_update",
-                        rooms.getRoomPublic(roomId)
-                      );
-                    }
-                  }, 8000);
-                  io.to(roomId).emit(
-                    "lobby_update",
-                    rooms.getRoomPublic(roomId)
-                  );
+                  startNewRoundForRoom(roomId);
                 }, 1500);
               } catch (e) {
                 console.error(
@@ -359,52 +312,9 @@ io.on("connection", (socket) => {
       }
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 
-      // If all players finished now, start next round
+      // NEW: If all players are in "waiting" state, start next round
       try {
-        const room = rooms.getRoom(roomId);
-        if (room) {
-          const allFinished = Array.from(room.players.values()).every(
-            (p) => p.roundFinished === true
-          );
-          if (allFinished) {
-            setTimeout(() => {
-              const deal = rooms.startGame(roomId);
-              const r = rooms.getRoom(roomId);
-              r.pendingDeal = deal.publicDeal;
-              r.pendingDealLoaded = new Set();
-              if (r.pendingDealTimeout) {
-                clearTimeout(r.pendingDealTimeout);
-                r.pendingDealTimeout = null;
-              }
-              for (const p of r.players.values()) {
-                const hand =
-                  deal.publicDeal.perPlayerHands[p.playerId] || [];
-                io.to(p.socketId).emit("deal_pending", {
-                  roomId,
-                  hand,
-                  target: deal.publicDeal.target,
-                });
-              }
-              io.to(roomId).emit("pending_status", {
-                loadedCount: 0,
-                total: r.players.size,
-              });
-              r.pendingDealTimeout = setTimeout(() => {
-                if (r && r.pendingDeal) {
-                  io.to(roomId).emit("deal_riddle", r.pendingDeal);
-                  r.pendingDeal = null;
-                  r.pendingDealLoaded = null;
-                  r.pendingDealTimeout = null;
-                  io.to(roomId).emit(
-                    "lobby_update",
-                    rooms.getRoomPublic(roomId)
-                  );
-                }
-              }, 8000);
-              io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-            }, 1500);
-          }
-        }
+        scheduleNewRoundIfAllWaiting(roomId);
       } catch (e) {
         console.error(
           "error auto-starting next round after no_solution",
@@ -452,52 +362,9 @@ io.on("connection", (socket) => {
 
       io.to(roomId).emit("no_solution_timer", result.broadcast);
 
-      // If all players finished now, start next round
+      // NEW: If all players are in "waiting" state, start next round
       try {
-        const room = rooms.getRoom(roomId);
-        if (room) {
-          const allFinished = Array.from(room.players.values()).every(
-            (p) => p.roundFinished === true
-          );
-          if (allFinished) {
-            setTimeout(() => {
-              const deal = rooms.startGame(roomId);
-              const r = rooms.getRoom(roomId);
-              r.pendingDeal = deal.publicDeal;
-              r.pendingDealLoaded = new Set();
-              if (r.pendingDealTimeout) {
-                clearTimeout(r.pendingDealTimeout);
-                r.pendingDealTimeout = null;
-              }
-              for (const p of r.players.values()) {
-                const hand =
-                  deal.publicDeal.perPlayerHands[p.playerId] || [];
-                io.to(p.socketId).emit("deal_pending", {
-                  roomId,
-                  hand,
-                  target: deal.publicDeal.target,
-                });
-              }
-              io.to(roomId).emit("pending_status", {
-                loadedCount: 0,
-                total: r.players.size,
-              });
-              r.pendingDealTimeout = setTimeout(() => {
-                if (r && r.pendingDeal) {
-                  io.to(roomId).emit("deal_riddle", r.pendingDeal);
-                  r.pendingDeal = null;
-                  r.pendingDealLoaded = null;
-                  r.pendingDealTimeout = null;
-                  io.to(roomId).emit(
-                    "lobby_update",
-                    rooms.getRoomPublic(roomId)
-                  );
-                }
-              }, 8000);
-              io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-            }, 1500);
-          }
-        }
+        scheduleNewRoundIfAllWaiting(roomId);
       } catch (e) {
         console.error("error auto-starting next round after skip", e);
       }
@@ -505,38 +372,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("request_reshuffle", ({ roomId }) => {
-    const deal = rooms.reshuffle(roomId);
-    const room = rooms.getRoom(roomId);
-    if (room) {
-      room.pendingDeal = deal.publicDeal;
-      room.pendingDealLoaded = new Set();
-      if (room.pendingDealTimeout) {
-        clearTimeout(room.pendingDealTimeout);
-        room.pendingDealTimeout = null;
-      }
-      for (const p of room.players.values()) {
-        const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
-        io.to(p.socketId).emit("deal_pending", {
-          roomId,
-          hand,
-          target: deal.publicDeal.target,
-        });
-      }
-      io.to(roomId).emit("pending_status", {
-        loadedCount: 0,
-        total: room.players.size,
-      });
-      room.pendingDealTimeout = setTimeout(() => {
-        if (room && room.pendingDeal) {
-          io.to(roomId).emit("deal_riddle", room.pendingDeal);
-          room.pendingDeal = null;
-          room.pendingDealLoaded = null;
-          room.pendingDealTimeout = null;
-          io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-        }
-      }, 8000);
-      io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-    }
+    // Manual reshuffle request (e.g., from client button) still allowed –
+    // uses the same pipeline as an auto next round.
+    startNewRoundForRoom(roomId);
   });
 
   socket.on("deal_loaded", ({ roomId }) => {

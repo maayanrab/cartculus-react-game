@@ -233,6 +233,17 @@ class Rooms {
     player.finishedStatus = "waiting";
   }
 
+  // NEW: helper to know when everyone is in "waiting" state (for auto new round)
+  areAllPlayersWaiting(roomId) {
+    const room = this.rooms.get(roomId);
+    if (!room) return false;
+
+    const players = Array.from(room.players.values());
+    if (players.length === 0) return false;
+
+    return players.every((p) => p.finishedStatus === "waiting");
+  }
+
   startNoSolutionTimer(roomId, originPlayerId, cb) {
     const room = this.rooms.get(roomId);
     if (!room) return;
@@ -369,7 +380,7 @@ class Rooms {
     };
   }
 
-  // 👉 CHANGED: Reveal timer only controls time window – no auto points on expiry
+  // 👉 Reveal timer only controls time window – no auto points on expiry
   startRevealTimer(roomId, originPlayerId, cb) {
     const room = this.rooms.get(roomId);
     if (!room) return;
