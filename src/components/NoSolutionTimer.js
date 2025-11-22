@@ -16,13 +16,18 @@ export default function NoSolutionTimer({ timer, onSkip, currentPlayerId, origin
 
   if (!timer) return null;
   const isOrigin = currentPlayerId && currentPlayerId === timer.originPlayerId;
+  const hasVoted = Array.isArray(timer.votes) && timer.votes.includes(currentPlayerId);
   return (
     <div className="no-solution-timer position-absolute p-2" style={{ left: '50%', transform: 'translateX(-50%)', top: 16, background: 'rgba(255,255,255,0.95)', borderRadius: 6, zIndex: 2000 }}>
       <div>{timer.type === 'reveal' ? 'Reveal' : 'No-solution'} declared by {originName || timer.originPlayerId}</div>
       <div>Time remaining: {remaining}s</div>
       <div className="mt-2">
         {!isOrigin && (
-          <button className="btn btn-sm btn-outline-primary" onClick={() => onSkip && onSkip(timer.originPlayerId)}>Skip</button>
+          hasVoted ? (
+            <div className="text-muted">Voted to skip</div>
+          ) : (
+            <button className="btn btn-sm btn-outline-primary" onClick={() => onSkip && onSkip(timer.originPlayerId)}>Skip</button>
+          )
         )}
       </div>
     </div>

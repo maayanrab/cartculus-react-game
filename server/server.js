@@ -131,7 +131,20 @@ io.on("connection", (socket) => {
       console.error("error handling timers on play_move", e);
     }
 
-    io.to(roomId).emit("state_sync", rooms.getStateForRoom(roomId, playerId));
+    // Emit per-player state sync so each client receives their own hand
+    try {
+      const room = rooms.getRoom(roomId);
+      if (room) {
+        for (const p of room.players.values()) {
+          const state = rooms.getStateForRoom(roomId, p.playerId);
+          io.to(p.socketId).emit("state_sync", state);
+        }
+      }
+    } catch (e) {
+      console.error('error emitting per-player state_sync on play_move', e);
+      // Fallback: send generic state to everyone
+      io.to(roomId).emit("state_sync", rooms.getStateForRoom(roomId, playerId));
+    }
     if (awarded) {
       io.to(roomId).emit("score_update", { scores: rooms.getScores(roomId), awardedTo: awarded });
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
@@ -201,6 +214,19 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("no_solution_timer", result.broadcast);
       if (result.awardedTo) {
         io.to(roomId).emit("score_update", { scores: rooms.getScores(roomId), awardedTo: result.awardedTo });
+        // After awarding points due to no-solution expiry, ensure each player
+        // receives a state snapshot so clients restore their own hands.
+        try {
+          const room = rooms.getRoom(roomId);
+          if (room) {
+            for (const p of room.players.values()) {
+              const state = rooms.getStateForRoom(roomId, p.playerId);
+              io.to(p.socketId).emit("state_sync", state);
+            }
+          }
+        } catch (e) {
+          console.error('error emitting state_sync after no_solution award', e);
+        }
       }
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
     });
@@ -215,6 +241,19 @@ io.on("connection", (socket) => {
       const result = rooms.finishNoSolutionBySkip(roomId, originPlayerId);
       io.to(roomId).emit("score_update", { scores: rooms.getScores(roomId), awardedTo: result.awardedTo });
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+      // After awarding due to skip completion, send per-player state_sync so
+      // each client receives their own original hand back.
+      try {
+        const room = rooms.getRoom(roomId);
+        if (room) {
+          for (const p of room.players.values()) {
+            const state = rooms.getStateForRoom(roomId, p.playerId);
+            io.to(p.socketId).emit("state_sync", state);
+          }
+        }
+      } catch (e) {
+        console.error('error emitting state_sync after skip finish', e);
+      }
       io.to(roomId).emit("no_solution_timer", result.broadcast);
     }
   });

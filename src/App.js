@@ -50,6 +50,7 @@ export default function App() {
   const [waitingForOthers, setWaitingForOthers] = useState(false);
   const [pendingLoadedCount, setPendingLoadedCount] = useState(0);
   const [pendingTotalCount, setPendingTotalCount] = useState(0);
+  const [waitingForOthersAfterWin, setWaitingForOthersAfterWin] = useState(false);
 
   // Animation states
   const [isReshuffling, setIsReshuffling] = useState(false);
@@ -91,6 +92,14 @@ export default function App() {
       return false;
     }
   })();
+  const mySocketId = socket.getSocketId();
+  const showingOriginHand = Boolean(
+    noSolutionTimer &&
+      mySocketId &&
+      noSolutionTimer.originPlayerId &&
+      mySocketId !== noSolutionTimer.originPlayerId &&
+      Array.isArray(noSolutionTimer.originHand)
+  );
   const currentMode = isSharedSolution ? "solution" : isSharedRiddle ? "riddle" : "casual";
   useEffect(() => {
     cardsRef.current = cards;
@@ -343,6 +352,7 @@ export default function App() {
     socket.on("deal_riddle", (data) => {
       // reveal moment: stop waiting UI
       setWaitingForOthers(false);
+      setWaitingForOthersAfterWin(false);
       const myId = socket.getSocketId();
       const myHand = (data.perPlayerHands && data.perPlayerHands[myId]) || [];
       // Play the entry animation for incoming multiplayer deal so clients
@@ -383,6 +393,7 @@ export default function App() {
         setGameStarted(true);
         // Show waiting UI until server reveals
         setWaitingForOthers(true);
+        setWaitingForOthersAfterWin(false);
         setPendingLoadedCount(0);
         setPendingTotalCount((prev) => prev);
         // Ack to server that this client has loaded the pending deal
@@ -403,6 +414,7 @@ export default function App() {
           try {
             await playIncomingDeal(state.cards, state.target);
             if (state.scores) setScores(state.scores);
+            setWaitingForOthersAfterWin(false);
           } catch (e) {
             console.error("playIncomingDeal failed (state_sync)", e);
             const finalCards = state.cards.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
@@ -415,6 +427,7 @@ export default function App() {
             }
             if (state.scores) setScores(state.scores);
             setGameStarted(true);
+            setWaitingForOthersAfterWin(false);
           }
         })();
       } else {
@@ -426,8 +439,33 @@ export default function App() {
       }
     });
 
-    socket.on("no_solution_timer", (payload) => setNoSolutionTimer(payload));
+    // no_solution updates handled below (includes restore logic)
+    // When receiving a no-solution/reveal update, set the timer
     socket.on("reveal_timer", (payload) => setNoSolutionTimer(payload));
+
+    // Ensure that when the no-solution is resolved (skipped/expired/resolvedBy)
+    // we restore non-origin players' hands if they were temporarily swapped.
+    socket.on("no_solution_timer", (payload) => {
+      setNoSolutionTimer(payload);
+      try {
+        if (!payload) return;
+        const myId = socket.getSocketId();
+        const isOrigin = myId && payload.originPlayerId === myId;
+        const finished = payload.expired || payload.skipped || payload.resolvedBy;
+        if (finished) {
+          // restore only for players who had their hand temporarily swapped
+          if (!isOrigin && tempHandBackupRef.current) {
+            setCards(tempHandBackupRef.current.cards || []);
+            setOriginalCards(tempHandBackupRef.current.original || []);
+            tempHandBackupRef.current = null;
+          }
+          // clear timer shortly after restoring to allow UX to show final state
+          setTimeout(() => setNoSolutionTimer(null), 1200);
+        }
+      } catch (e) {
+        console.error('error handling no_solution_timer restore', e);
+      }
+    });
     socket.on("score_update", (payload) => {
       const scoresPayload = (payload && payload.scores) || {};
       setScores(scoresPayload);
@@ -439,9 +477,10 @@ export default function App() {
           try { confetti(); } catch {}
           try { playSound(successSound); } catch {}
           setHasWonCurrentRound(true);
-          // remove my cards from the screen while I wait for the round to finish
+          // show waiting text instead of my hand while others finish
           setCards([]);
           setOriginalCards([]);
+          setWaitingForOthersAfterWin(true);
         }
       } catch (e) {
         console.error("handling score_update", e);
@@ -504,7 +543,35 @@ export default function App() {
   const handleJoined = ({ roomId, playerName }) => {
     setMultiplayerRoom(roomId);
     setPlayerName(playerName);
+    // Keep multiplayer screen active so user sees the room details page
+    setShowMultiplayer(true);
+  };
+
+  const handleGoHome = () => {
+    // Always hide multiplayer UI and return to main menu
     setShowMultiplayer(false);
+    // If currently in a room, leave it
+    if (multiplayerRoom) {
+      try { socket.leaveRoom(multiplayerRoom); } catch (e) {}
+      setMultiplayerRoom(null);
+      setPlayers([]);
+      setScores({});
+      setHostId(null);
+      setPlayerName(null);
+    }
+    setIsReplaying(false);
+    replaySessionIdRef.current += 1; // cancel any queued replay loops
+    setReplayPendingMoves(null);
+    setSelected([]);
+    setSelectedOperator(null);
+    setHistory([]);
+    setSolutionMoves([]);
+    setHasWonCurrentRound(false);
+    setFlyingCardInfo(null);
+    setCards([]);
+    document.body.classList.remove("scrolling-disabled");
+    try { window.history.replaceState(null, "", window.location.pathname); } catch {}
+    setGameStarted(false);
   };
 
   const playSound = (audio) => {
@@ -1259,37 +1326,50 @@ export default function App() {
   };
 
   if (!gameStarted) {
-    return (
-      <>
-        <MainMenu />
-        {showMultiplayer && !multiplayerRoom && <Lobby onJoined={handleJoined} />}
-        {multiplayerRoom && (
-          <PlayerList
-            players={players}
-            scores={scores}
-            hostId={hostId}
-            currentPlayerId={socket.getSocketId()}
-            roomId={multiplayerRoom}
-            onStartGame={(roomId) => socket.startGame(roomId)}
-          />
-        )}
-      </>
-    );
+    // When multiplayer mode is active, always show the Lobby view (either
+    // the create/join screen or the joined-room details). This prevents the
+    // main Solo menu from appearing while the player is in multiplayer mode
+    // and keeps a Home button visible so the user can cancel.
+    if (showMultiplayer) {
+      return (
+        <div className="container text-center position-relative" style={{ minHeight: '100vh', paddingTop: '4rem' }}>
+          {/* Home button while in Lobby so player can cancel/return (positioned relative to the container)
+              This ensures it aligns like the in-match Home button instead of being pinned to the viewport. */}
+          <div className="position-absolute top-0 start-0 m-2 d-none d-sm-block">
+            <button className="btn btn-primary btn-lg" onClick={handleGoHome}>🏠︎</button>
+          </div>
+          <div className="position-absolute top-0 start-50 translate-middle-x mt-2 d-block d-sm-none">
+            <button className="btn btn-primary btn-lg" onClick={handleGoHome}>🏠︎</button>
+          </div>
+
+          {/* If not yet in a room, show the full-screen Lobby; once joined, hide the creation panel and show only the room/player list */}
+          {!multiplayerRoom && <Lobby fullScreen={true} onJoined={handleJoined} />}
+
+          {multiplayerRoom && (
+            <div className="mt-3">
+              <PlayerList
+                players={players}
+                scores={scores}
+                hostId={hostId}
+                currentPlayerId={socket.getSocketId()}
+                roomId={multiplayerRoom}
+                onStartGame={(roomId) => socket.startGame(roomId)}
+                gameStarted={false}
+              />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Default: show the main Solo/Multiplayer menu
+    return <MainMenu />;
   }
 
   return (
     <div className="container text-center position-relative">
       <div ref={centerRef} className="screen-center-anchor d-none"></div>
-      {multiplayerRoom && (
-        <PlayerList
-          players={players}
-          scores={scores}
-          hostId={hostId}
-          currentPlayerId={socket.getSocketId()}
-          roomId={multiplayerRoom}
-          onStartGame={(roomId) => socket.startGame(roomId)}
-        />
-      )}
+      {/* Player list will be shown below the cards/buttons once the match is started */}
       {waitingForOthers && (
         <div className="alert alert-info d-flex align-items-center justify-content-center mt-2" role="status" style={{ zIndex: 1200 }}>
           <div className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
@@ -1551,77 +1631,86 @@ export default function App() {
 
           {/* End of new addition */}
 
-          <div className="container">
+          <div className={showingOriginHand ? "player-cards-highlight" : "container"}>
+            {showingOriginHand && (
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+                <div className="target-border-bs">
+                  <span className="target-text-bs">Player's cards</span>
+                </div>
+              </div>
+            )}
             <div className="row justify-content-center gx-3 gy-3 position-relative">
-              {(isReshuffling || newCardsAnimatingIn
-                ? cardsToRender
-                : cards
-              ).map((card, index) => {
-                const shouldAnimateOut =
-                  isReshuffling &&
-                  !newCardsAnimatingIn &&
-                  !card.isPlaceholder &&
-                  !card.invisible;
-                const shouldAnimateIn =
-                  newCardsAnimatingIn && !card.isPlaceholder;
-                const isNewlyMerged = card.isNewlyMerged;
+              {waitingForOthersAfterWin && (
+                <div className="col-12">
+                  <div className="alert alert-info mt-4">Waiting for other players...</div>
+                </div>
+              )}
 
-                return (
-                  <div
-                    key={card.id}
-                    className={`col-6 col-sm-auto d-flex justify-content-center reshuffle-card-container
+              {!waitingForOthersAfterWin &&
+                (isReshuffling || newCardsAnimatingIn ? cardsToRender : cards).map(
+                  (card, index) => {
+                    const shouldAnimateOut =
+                      isReshuffling &&
+                      !newCardsAnimatingIn &&
+                      !card.isPlaceholder &&
+                      !card.invisible;
+                    const shouldAnimateIn = newCardsAnimatingIn && !card.isPlaceholder;
+                    const isNewlyMerged = card.isNewlyMerged;
+
+                    return (
+                      <div
+                        key={card.id}
+                        className={`col-6 col-sm-auto d-flex justify-content-center reshuffle-card-container
                       ${shouldAnimateOut ? "card-animating-out" : ""}
                       ${shouldAnimateIn ? "card-animating-in" : ""}
                       ${
-                        shouldAnimateIn && card.isFlipped
-                          ? "initial-offscreen-hidden"
-                          : ""
-                      }
+                          shouldAnimateIn && card.isFlipped
+                            ? "initial-offscreen-hidden"
+                            : ""
+                        }
                       ${
-                        isNewlyMerged
-                          ? "newly-merged-card-appear-container"
-                          : ""
-                      }
+                          isNewlyMerged
+                            ? "newly-merged-card-appear-container"
+                            : ""
+                        }
                     `}
-                    style={{
-                      ...(shouldAnimateOut ? card.dynamicOutStyle : {}),
-                      "--card-animation-delay": shouldAnimateIn
-                        ? `${index * 0.05}s`
-                        : "0s",
-                    }}
-                    ref={(el) => (cardRefs.current[card.id] = el)}
-                  >
-                    <Card
-                      value={card.value}
-                      selected={selected.includes(card.id)}
-                      // onClick={
-                      //   !isReshuffling && !newCardsAnimatingIn && !card.isPlaceholder && !card.invisible && !flyingCardInfo ? () => handleCardClick(card.id) : undefined
-                      // }
-                      onClick={
-                        !isReshuffling &&
-                        !newCardsAnimatingIn &&
-                        !card.isPlaceholder &&
-                        !card.invisible &&
-                        (flyingCardInfo ? flyingCardInfo.id !== card.id : true)
-                          ? () => handleCardClick(card.id)
-                          : undefined
-                      }
-                      isAbstract={card.isAbstract}
-                      invisible={card.invisible && !isNewlyMerged}
-                      isPlaceholder={card.isPlaceholder}
-                      isFlipped={
-                        card.isPlaceholder
-                          ? false
-                          : newCardsAnimatingIn
-                          ? card.isFlipped
-                          : !isReshuffling && !newCardsAnimatingIn
-                          ? !handCardsFlipped
-                          : card.isFlipped
-                      }
-                    />
-                  </div>
-                );
-              })}
+                        style={{
+                          ...(shouldAnimateOut ? card.dynamicOutStyle : {}),
+                          "--card-animation-delay": shouldAnimateIn
+                            ? `${index * 0.05}s`
+                            : "0s",
+                        }}
+                        ref={(el) => (cardRefs.current[card.id] = el)}
+                      >
+                        <Card
+                          value={card.value}
+                          selected={selected.includes(card.id)}
+                          onClick={
+                            !isReshuffling &&
+                            !newCardsAnimatingIn &&
+                            !card.isPlaceholder &&
+                            !card.invisible &&
+                            (flyingCardInfo ? flyingCardInfo.id !== card.id : true)
+                              ? () => handleCardClick(card.id)
+                              : undefined
+                          }
+                          isAbstract={card.isAbstract}
+                          invisible={card.invisible && !isNewlyMerged}
+                          isPlaceholder={card.isPlaceholder}
+                          isFlipped={
+                            card.isPlaceholder
+                              ? false
+                              : newCardsAnimatingIn
+                              ? card.isFlipped
+                              : !isReshuffling && !newCardsAnimatingIn
+                              ? !handCardsFlipped
+                              : card.isFlipped
+                          }
+                        />
+                      </div>
+                    );
+                  }
+                )}
 
               {/* Flying card for merge animation */}
               {flyingCardInfo && (
@@ -1674,6 +1763,21 @@ export default function App() {
           </button>
         ))}
       </div>
+
+      {/* Room / Player list placed below cards and controls so it doesn't overlap game area on small screens */}
+      {multiplayerRoom && (
+        <div className="container mt-3 mb-4">
+          <PlayerList
+            players={players}
+            scores={scores}
+            hostId={hostId}
+            currentPlayerId={socket.getSocketId()}
+            roomId={multiplayerRoom}
+            onStartGame={(roomId) => socket.startGame(roomId)}
+            gameStarted={gameStarted}
+          />
+        </div>
+      )}
 
     </div>
   );
