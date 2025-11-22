@@ -945,8 +945,8 @@ export default function App() {
           ? "Solution Replay"
           : currentMode === "riddle"
           ? "Riddle"
+          : "‏"
           // : "A mathematical card game"
-          : ""
           }
       </h5>
 
