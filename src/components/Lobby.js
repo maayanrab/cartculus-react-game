@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import * as socket from "../multiplayer/socket";
 
 export default function Lobby({ onJoined }) {
-  const [roomId, setRoomId] = useState("room1");
   const [name, setName] = useState("Player");
   const [roomName, setRoomName] = useState("");
   const [rooms, setRooms] = useState([]);
@@ -12,14 +11,13 @@ export default function Lobby({ onJoined }) {
     socket.requestRooms();
   }, []);
 
-  const join = (rId = roomId, rName = null) => {
+  const join = (rId, rName = null) => {
     socket.joinRoom(rId, name, rName);
     onJoined({ roomId: rId, playerName: name });
   };
 
   const createRoom = () => {
     const newId = `room-${Math.random().toString(36).slice(2, 8)}`;
-    setRoomId(newId);
     join(newId, roomName || newId);
   };
 
@@ -45,15 +43,13 @@ export default function Lobby({ onJoined }) {
           {rooms.length === 0 && <li className="text-muted">No active rooms</li>}
           {rooms.map((r) => (
             <li key={r.roomId} className="d-flex justify-content-between align-items-center mb-1">
-              <span>{r.roomName ? `${r.roomName} — ${r.roomId}` : r.roomId} ({r.playerCount})</span>
-              <button className="btn btn-primary btn-sm" onClick={() => join(r.roomId)}>Join</button>
+              <span>{r.roomName || "Unnamed Room"}</span>
+              <button className="btn btn-primary btn-sm" onClick={() => join(r.roomId, r.roomName)}>Join</button>
             </li>
           ))}
         </ul>
         <div className="mt-2">
-          <input className="form-control form-control-sm mb-1" value={roomId} onChange={(e) => setRoomId(e.target.value)} />
           <div className="d-flex gap-2">
-            <button className="btn btn-primary btn-sm" onClick={() => join()}>Join by ID</button>
             <button className="btn btn-outline-secondary btn-sm" onClick={() => socket.requestRooms()}>Refresh</button>
           </div>
         </div>

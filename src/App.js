@@ -43,6 +43,7 @@ export default function App() {
   const [multiplayerRoom, setMultiplayerRoom] = useState(null);
   const [playerName, setPlayerName] = useState(null);
   const [players, setPlayers] = useState([]);
+  const [hostId, setHostId] = useState(null);
   const [scores, setScores] = useState({});
   const [noSolutionTimer, setNoSolutionTimer] = useState(null);
   const [showMultiplayer, setShowMultiplayer] = useState(false);
@@ -67,6 +68,7 @@ export default function App() {
   const replayInitialCardsRef = useRef(null);
   const replayInitialTargetRef = useRef(null);
   const replaySessionIdRef = useRef(0);
+  const tempHandBackupRef = useRef(null);
   const isSharedRiddle = (() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -332,35 +334,152 @@ export default function App() {
     socket.on("lobby_update", (data) => {
       setPlayers(data.players || []);
       setScores(data.scores || {});
+      setHostId(data.hostId || null);
     });
 
     socket.on("deal_riddle", (data) => {
       const myId = socket.getSocketId();
       const myHand = (data.perPlayerHands && data.perPlayerHands[myId]) || [];
-      const finalCards = myHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
-      setCards(finalCards);
-      setOriginalCards(myHand.map((c) => ({ value: c.value })));
-      setTarget(data.target);
-      setCurrentRoundTarget(data.target);
-      setGameStarted(true);
+      // Play the entry animation for incoming multiplayer deal so clients
+      // experience the same visual reshuffle/flip as local players.
+      (async () => {
+        try {
+          await playIncomingDeal(myHand, data.target);
+        } catch (e) {
+          console.error("playIncomingDeal failed", e);
+          // Fallback to immediate set if animation fails
+          const finalCards = myHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
+          setCards(finalCards);
+              // Preserve the original card ids for multiplayer so Reset can rebuild correct ids
+              setOriginalCards(myHand);
+          setTarget(data.target);
+          setCurrentRoundTarget(data.target);
+          setGameStarted(true);
+        }
+      })();
+    });
+
+    // When server sends a pending deal, load the cards face-down and ack when ready.
+    socket.on("deal_pending", (data) => {
+      try {
+        const myHand = data.hand || [];
+        // Load cards into state but keep them face-down (handCardsFlipped false, targetCardFlipped false)
+        const finalCards = myHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
+        setCards(finalCards);
+        // Preserve full card objects for reset/undo
+        setOriginalCards(myHand);
+        if (data.target !== undefined) {
+          setTarget(data.target);
+          setCurrentRoundTarget(data.target);
+        }
+        // Ensure visual state starts upside-down
+        setHandCardsFlipped(false);
+        setTargetCardFlipped(false);
+        setGameStarted(true);
+        // Ack to server that this client has loaded the pending deal
+        try { socket.emitDealLoaded(data.roomId || multiplayerRoom); } catch (e) {}
+      } catch (e) {
+        console.error("error handling deal_pending", e);
+      }
+    });
+
+    socket.on("reveal_timer", (payload) => {
+      setNoSolutionTimer(payload);
     });
 
     socket.on("state_sync", (state) => {
-      if (state.cards) {
-        const finalCards = state.cards.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
-        setCards(finalCards);
+      // For state_sync, animate in the provided cards/target similarly
+      if (state && state.cards && state.cards.length > 0) {
+        (async () => {
+          try {
+            await playIncomingDeal(state.cards, state.target);
+            if (state.scores) setScores(state.scores);
+          } catch (e) {
+            console.error("playIncomingDeal failed (state_sync)", e);
+            const finalCards = state.cards.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
+            setCards(finalCards);
+              // Keep the full card objects (including ids) so Reset/Undo work correctly
+              setOriginalCards(state.cards || []);
+            if (state.target) {
+              setTarget(state.target);
+              setCurrentRoundTarget(state.target);
+            }
+            if (state.scores) setScores(state.scores);
+            setGameStarted(true);
+          }
+        })();
+      } else {
+        if (state.target) {
+          setTarget(state.target);
+          setCurrentRoundTarget(state.target);
+        }
+        if (state.scores) setScores(state.scores);
       }
-      if (state.target) setTarget(state.target);
-      if (state.scores) setScores(state.scores);
     });
 
     socket.on("no_solution_timer", (payload) => setNoSolutionTimer(payload));
-    socket.on("score_update", (payload) => { setScores((payload && payload.scores) || {}); });
+    socket.on("reveal_timer", (payload) => setNoSolutionTimer(payload));
+    socket.on("score_update", (payload) => {
+      const scoresPayload = (payload && payload.scores) || {};
+      setScores(scoresPayload);
+      try {
+        const awardedTo = payload && payload.awardedTo;
+        const myId = socket.getSocketId();
+        if (awardedTo && myId && awardedTo === myId) {
+          // I was awarded points — play celebration and remove my hand while waiting
+          try { confetti(); } catch {}
+          try { playSound(successSound); } catch {}
+          setHasWonCurrentRound(true);
+          // remove my cards from the screen while I wait for the round to finish
+          setCards([]);
+          setOriginalCards([]);
+        }
+      } catch (e) {
+        console.error("handling score_update", e);
+      }
+    });
 
     return () => {
       try { socket.disconnect(); } catch (e) {}
     };
   }, []);
+
+  // When a no-solution or reveal timer starts, non-origin players temporarily
+  // get the origin player's hand to attempt solving. Restore when timer ends.
+  useEffect(() => {
+    if (!noSolutionTimer) {
+      // restore if we had a temporary hand
+      if (tempHandBackupRef.current) {
+        setCards(tempHandBackupRef.current.cards || []);
+        setOriginalCards(tempHandBackupRef.current.original || []);
+        tempHandBackupRef.current = null;
+      }
+      return;
+    }
+    // If the timer payload indicates the timer finished (expired/skipped/resolved), restore and clear
+    if (noSolutionTimer.expired || noSolutionTimer.skipped || noSolutionTimer.resolvedBy) {
+      if (tempHandBackupRef.current) {
+        setCards(tempHandBackupRef.current.cards || []);
+        setOriginalCards(tempHandBackupRef.current.original || []);
+        tempHandBackupRef.current = null;
+      }
+      // clear the timer UI after handling
+      setTimeout(() => setNoSolutionTimer(null), 2000);
+      return;
+    }
+    const currentId = socket.getSocketId();
+    const originId = noSolutionTimer.originPlayerId;
+    // only swap hands for players who are NOT the origin
+    if (currentId && originId && currentId !== originId && Array.isArray(noSolutionTimer.originHand)) {
+      // backup current hand so we can restore later
+      tempHandBackupRef.current = { cards: cards, original: originalCards };
+      const incoming = noSolutionTimer.originHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
+      setCards(incoming);
+      // Preserve full card objects so Reset/Undo and id-based selection work correctly
+      setOriginalCards(noSolutionTimer.originHand);
+      setGameStarted(true);
+    }
+  }, [noSolutionTimer]);
 
   const handleJoined = ({ roomId, playerName }) => {
     setMultiplayerRoom(roomId);
@@ -382,6 +501,16 @@ export default function App() {
     presetCards = null,
     presetTarget = null
   ) => {
+    // If we're in multiplayer, request the server to reshuffle/deal so
+    // all players receive the same shared target and hands.
+    if (multiplayerRoom) {
+      try {
+        socket.requestReshuffle(multiplayerRoom);
+      } catch (e) {
+        console.error("requestReshuffle failed", e);
+      }
+      return;
+    }
     // Allow starting reshuffle even if state thinks it's already reshuffling,
     // but do not start a reshuffle in the middle of a merge visual.
     if (flyingCardInfo) return;
@@ -549,6 +678,118 @@ export default function App() {
     document.body.classList.remove("scrolling-disabled");
   };
 
+  // Play the same entry animation sequence for incoming multiplayer deals
+  const playIncomingDeal = async (handCards, theTarget) => {
+    // handCards: array of { id, value }
+    // Reset any existing visual state
+    reshuffleAbortRef.current = false;
+    setIsReshuffling(true);
+    setNewCardsAnimatingIn(false);
+    setHandCardsFlipped(false);
+    setTargetCardFlipped(false);
+    document.body.classList.add("scrolling-disabled");
+
+    const preparedNewCardsForAnimation = Array.from({ length: TOTAL_CARD_SLOTS }).map((_, index) => {
+      const newCard = handCards[index];
+      if (newCard) {
+        return {
+          ...newCard,
+          isFlipped: true,
+          isPlaceholder: false,
+          invisible: false,
+        };
+      }
+      return {
+        id: `placeholder-entry-${Date.now()}-${index}`,
+        value: null,
+        isAbstract: false,
+        isFlipped: false,
+        isPlaceholder: true,
+        invisible: true,
+      };
+    });
+
+    cardRefs.current = {};
+    setCards([]);
+
+    await new Promise((resolve) => requestAnimationFrame(() => {
+      setCardsToRender(preparedNewCardsForAnimation);
+      setNewCardsAnimatingIn(true);
+      resolve();
+    }));
+
+    await sleep(400);
+    if (reshuffleAbortRef.current) {
+      setIsReshuffling(false);
+      setNewCardsAnimatingIn(false);
+      document.body.classList.remove("scrolling-disabled");
+      return;
+    }
+    playSound(reshuffleSound);
+    await sleep(800 + (handCards.length > 0 ? (handCards.length - 1) * 50 : 0));
+    if (reshuffleAbortRef.current) {
+      setIsReshuffling(false);
+      setNewCardsAnimatingIn(false);
+      document.body.classList.remove("scrolling-disabled");
+      return;
+    }
+
+    setHandCardsFlipped(true);
+    await sleep(600);
+    if (reshuffleAbortRef.current) {
+      setIsReshuffling(false);
+      setNewCardsAnimatingIn(false);
+      document.body.classList.remove("scrolling-disabled");
+      return;
+    }
+
+    setTargetCardFlipped(true);
+    playSound(cardRevealSound);
+    await sleep(600);
+    if (reshuffleAbortRef.current) {
+      setIsReshuffling(false);
+      setNewCardsAnimatingIn(false);
+      document.body.classList.remove("scrolling-disabled");
+      return;
+    }
+
+    const finalCardsState = Array.from({ length: TOTAL_CARD_SLOTS }).map((_, index) => {
+      const generatedCard = handCards[index];
+      if (generatedCard) {
+        return {
+          ...generatedCard,
+          isFlipped: false,
+          invisible: false,
+          isPlaceholder: false,
+        };
+      }
+      return {
+        id: `placeholder-final-${Date.now()}-${index}`,
+        value: null,
+        isAbstract: false,
+        isFlipped: false,
+        isPlaceholder: true,
+        invisible: true,
+      };
+    });
+
+    setCards(finalCardsState);
+    // Keep full card info (including id) for multiplayer incoming deals
+    setOriginalCards(handCards);
+    setTarget(theTarget);
+    setCurrentRoundTarget(theTarget);
+    playSound(cardRevealSound);
+    setSelected([]);
+    setSelectedOperator(null);
+    setHistory([]);
+    setSolutionMoves([]);
+    setHasWonCurrentRound(false);
+    setIsReshuffling(false);
+    setNewCardsAnimatingIn(false);
+    document.body.classList.remove("scrolling-disabled");
+    setGameStarted(true);
+  };
+
   const getCardExitStyle = (cardCenter, screenCenterElement) => {
     if (!cardCenter || !screenCenterElement) return {};
     const screenRect = screenCenterElement.getBoundingClientRect();
@@ -564,7 +805,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (gameStarted && userInteracted) {
+    // Only auto-start a local round when not in a multiplayer room
+    if (gameStarted && userInteracted && !multiplayerRoom) {
       const params = new URLSearchParams(window.location.search);
       const cardsParam = params.get("cards");
       const targetParam = params.get("target");
@@ -588,7 +830,7 @@ export default function App() {
         startNewRound(true);
       }
     }
-  }, [gameStarted, userInteracted]);
+  }, [gameStarted, userInteracted, multiplayerRoom]);
 
   // Start replay once the new round finishes animating in
   useEffect(() => {
@@ -640,7 +882,13 @@ export default function App() {
           }
         }
         if (autoReshuffle && !isReplayingRef.current) {
-          setTimeout(() => startNewRound(true), 2000);
+          setTimeout(() => {
+            // In multiplayer we no longer trigger a reshuffle locally when a single player finishes.
+            // The server will start the next round only after all players have finished.
+            if (!multiplayerRoom) {
+              startNewRound(true);
+            }
+          }, 2000);
         }
       }
     }
@@ -999,7 +1247,7 @@ export default function App() {
           <PlayerList
             players={players}
             scores={scores}
-            hostId={players && players.length > 0 ? players[0].playerId : null}
+            hostId={hostId}
             currentPlayerId={socket.getSocketId()}
             roomId={multiplayerRoom}
             onStartGame={(roomId) => socket.startGame(roomId)}
@@ -1016,19 +1264,36 @@ export default function App() {
         <PlayerList
           players={players}
           scores={scores}
-          hostId={players && players.length > 0 ? players[0].playerId : null}
+          hostId={hostId}
           currentPlayerId={socket.getSocketId()}
           roomId={multiplayerRoom}
           onStartGame={(roomId) => socket.startGame(roomId)}
         />
       )}
-      {noSolutionTimer && <NoSolutionTimer timer={noSolutionTimer} onSkip={(origin) => socket.emitSkipVote(multiplayerRoom, socket.getSocketId(), origin)} />}
+      {noSolutionTimer && (
+        <NoSolutionTimer
+          timer={noSolutionTimer}
+          onSkip={(origin) => socket.emitSkipVote(multiplayerRoom, socket.getSocketId(), origin)}
+          currentPlayerId={socket.getSocketId()}
+          originName={players.find((p) => p.playerId === (noSolutionTimer && noSolutionTimer.originPlayerId))?.name}
+        />
+      )}
 
       {/* Home button - desktop/tablet: top-left */}
       <div className="position-absolute top-0 start-0 m-2 d-none d-sm-block">
         <button
           className="btn btn-primary btn-lg"
           onClick={() => {
+            // Leave multiplayer room if present, then return to main menu
+            if (multiplayerRoom) {
+              try { socket.leaveRoom(multiplayerRoom); } catch (e) {}
+              setMultiplayerRoom(null);
+              setPlayers([]);
+              setScores({});
+              setHostId(null);
+              setPlayerName(null);
+              setShowMultiplayer(false);
+            }
             setIsReplaying(false);
             replaySessionIdRef.current += 1; // cancel any queued replay loops
             setReplayPendingMoves(null);
@@ -1053,6 +1318,16 @@ export default function App() {
         <button
           className="btn btn-primary btn-lg"
           onClick={() => {
+            // Leave multiplayer room if present, then return to main menu
+            if (multiplayerRoom) {
+              try { socket.leaveRoom(multiplayerRoom); } catch (e) {}
+              setMultiplayerRoom(null);
+              setPlayers([]);
+              setScores({});
+              setHostId(null);
+              setPlayerName(null);
+              setShowMultiplayer(false);
+            }
             setIsReplaying(false);
             replaySessionIdRef.current += 1; // cancel any queued replay loops
             setReplayPendingMoves(null);
@@ -1119,15 +1394,29 @@ export default function App() {
               className="d-flex flex-column flex-nowrap small-screen-controls position-absolute"
               style={{ left: "calc(50% - 130px)", transform: "translateX(-50%)" }}
             >
-              <button
-                className="img-button reshuffle-btn"
-                onClick={() => startNewRound(true)}
-                disabled={
-                  isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying
-                }
-              >
-                <img src="./images/reshuffle-button.png" alt="Reshuffle" />
-              </button>
+              {multiplayerRoom ? (
+                <button
+                  className="img-button reshuffle-btn"
+                  onClick={() => {
+                    try { socket.emitDeclareNoSolution(multiplayerRoom, socket.getSocketId()); } catch (e) { console.error(e); }
+                  }}
+                  disabled={
+                    isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying || (players.find(p => p.playerId === socket.getSocketId()) || {}).finished
+                  }
+                >
+                  <img src="./images/no-solution-button.png" alt="No solution" />
+                </button>
+              ) : (
+                <button
+                  className="img-button reshuffle-btn"
+                  onClick={() => startNewRound(true)}
+                  disabled={
+                    isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying
+                  }
+                >
+                  <img src="./images/reshuffle-button.png" alt="Reshuffle" />
+                </button>
+              )}
             </div>
 
             <div className="target">

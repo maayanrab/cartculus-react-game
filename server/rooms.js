@@ -44,6 +44,10 @@ class Rooms {
       const it = room.players.keys().next();
       room.host = it.done ? null : it.value;
     }
+    // If room is empty after removal, delete it entirely
+    if (room.players.size === 0) {
+      this.rooms.delete(roomId);
+    }
   }
 
   removePlayerBySocket(socketId) {
@@ -53,6 +57,9 @@ class Rooms {
         if (room.host === socketId) {
           const it = room.players.keys().next();
           room.host = it.done ? null : it.value;
+        }
+        if (room.players.size === 0) {
+          this.rooms.delete(roomId);
         }
       }
     }
@@ -85,6 +92,10 @@ class Rooms {
     const room = this._ensureRoom(roomId);
     for (const p of room.players.values()) p.finished = false;
     const deck = this.generateDeck();
+    // Choose a single shared target from the deck so all players get the same target
+    const targetIndex = Math.floor(Math.random() * deck.length);
+    const target = deck.splice(targetIndex, 1)[0];
+
     const perPlayerHands = {};
     const players = Array.from(room.players.values());
     for (const p of players) {
@@ -92,7 +103,7 @@ class Rooms {
       for (let i = 0; i < 4; i++) hand.push({ id: `${Date.now()}-${Math.random()}`, value: deck.pop() });
       perPlayerHands[p.playerId] = hand;
     }
-    const target = 24;
+
     room.deal = { perPlayerHands, target, seed: null };
     return { publicDeal: { target, perPlayerHands } };
   }
@@ -132,20 +143,23 @@ class Rooms {
     const duration = 30 * 1000;
     const expiresAt = Date.now() + duration;
     const votes = new Set();
+    // include origin player's hand in the broadcast so others can try solving it
+    const originHand = (room.deal && room.deal.perPlayerHands && room.deal.perPlayerHands[originPlayerId]) || [];
     room.noSolution = { originPlayerId, expiresAt, votes, timeoutId: null };
     room.noSolution.timeoutId = setTimeout(() => {
       const awardedTo = originPlayerId;
       room.scores[originPlayerId] = (room.scores[originPlayerId] || 0) + 10;
       room.noSolution = null;
-      cb({ awardedTo, broadcast: { originPlayerId, expired: true } });
+      cb({ awardedTo, broadcast: { originPlayerId, expired: true, originHand, type: 'no_solution' } });
     }, duration);
-    cb({ awardedTo: null, broadcast: { originPlayerId, expiresAt } });
+    cb({ awardedTo: null, broadcast: { originPlayerId, expiresAt, originHand, type: 'no_solution' } });
   }
 
   getNoSolutionTimerPublic(roomId) {
     const room = this.rooms.get(roomId);
     if (!room || !room.noSolution) return null;
-    return { originPlayerId: room.noSolution.originPlayerId, expiresAt: room.noSolution.expiresAt, votes: Array.from(room.noSolution.votes) };
+    const originHand = (room.deal && room.deal.perPlayerHands && room.deal.perPlayerHands[room.noSolution.originPlayerId]) || [];
+    return { originPlayerId: room.noSolution.originPlayerId, expiresAt: room.noSolution.expiresAt, votes: Array.from(room.noSolution.votes), originHand, type: 'no_solution' };
   }
 
   registerSkipVote(roomId, playerId, originPlayerId) {
@@ -163,13 +177,59 @@ class Rooms {
     if (room.noSolution.timeoutId) clearTimeout(room.noSolution.timeoutId);
     const awardedTo = originPlayerId;
     room.scores[originPlayerId] = (room.scores[originPlayerId] || 0) + 10;
-    const broadcast = { originPlayerId, skipped: true };
+    const originHand = (room.deal && room.deal.perPlayerHands && room.deal.perPlayerHands[originPlayerId]) || [];
+    const broadcast = { originPlayerId, skipped: true, originHand, type: 'no_solution' };
     room.noSolution = null;
     return { awardedTo, broadcast };
   }
 
+  startRevealTimer(roomId, originPlayerId, cb) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    if (room.reveal && room.reveal.originPlayerId === originPlayerId) return;
+    if (room.reveal && room.reveal.timeoutId) clearTimeout(room.reveal.timeoutId);
+    const duration = 30 * 1000;
+    const expiresAt = Date.now() + duration;
+    const originHand = (room.deal && room.deal.perPlayerHands && room.deal.perPlayerHands[originPlayerId]) || [];
+    room.reveal = { originPlayerId, expiresAt, timeoutId: null };
+    room.reveal.timeoutId = setTimeout(() => {
+      // if nobody solved during reveal, award to origin
+      const awardedTo = originPlayerId;
+      room.scores[originPlayerId] = (room.scores[originPlayerId] || 0) + 10;
+      room.reveal = null;
+      cb({ awardedTo, broadcast: { originPlayerId, expired: true, originHand, type: 'reveal' } });
+    }, duration);
+    cb({ awardedTo: null, broadcast: { originPlayerId, expiresAt, originHand, type: 'reveal' } });
+  }
+
+  getRevealTimerPublic(roomId) {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.reveal) return null;
+    const originHand = (room.deal && room.deal.perPlayerHands && room.deal.perPlayerHands[room.reveal.originPlayerId]) || [];
+    return { originPlayerId: room.reveal.originPlayerId, expiresAt: room.reveal.expiresAt, originHand, type: 'reveal' };
+  }
+
+  cancelNoSolution(roomId) {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.noSolution) return;
+    if (room.noSolution.timeoutId) clearTimeout(room.noSolution.timeoutId);
+    room.noSolution = null;
+  }
+
+  cancelReveal(roomId) {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.reveal) return;
+    if (room.reveal.timeoutId) clearTimeout(room.reveal.timeoutId);
+    room.reveal = null;
+  }
+
   listRooms() {
-    return Array.from(this.rooms.entries()).map(([roomId, room]) => ({ roomId, playerCount: room ? room.players.size : 0, roomName: room ? room.name : null }));
+    return Array.from(this.rooms.entries()).map(([roomId, room]) => ({
+      roomId,
+      playerCount: room ? room.players.size : 0,
+      roomName: room ? room.name : null,
+      hostId: room ? room.host : null,
+    }));
   }
 }
 

@@ -58,6 +58,16 @@ export function requestRooms() {
   socket.emit("list_rooms");
 }
 
+export function requestReshuffle(roomId) {
+  if (!socket) connect();
+  socket.emit("request_reshuffle", { roomId });
+}
+
+export function emitDealLoaded(roomId) {
+  if (!socket) return;
+  socket.emit("deal_loaded", { roomId });
+}
+
 export default {
   connect,
   disconnect,
@@ -67,6 +77,8 @@ export default {
   emitPlayMove,
   emitDeclareNoSolution,
   emitSkipVote,
+  requestReshuffle,
+  emitDealLoaded,
   on,
   getSocketId,
 };
