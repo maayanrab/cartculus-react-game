@@ -1,0 +1,13 @@
+start locally:
+in "package.json", change "homepage" to "_homepage"
+npm start
+
+update build:
+in "package.json", change "_homepage" to "homepage"
+npm run build
+
+publish online:
+npm run deploy
+
+test multiplayer component:
+npm run start:server
