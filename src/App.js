@@ -945,12 +945,31 @@ export default function App() {
           ? "Solution Replay"
           : currentMode === "riddle"
           ? "Riddle"
-          : "A mathematical card game"}
+          // : "A mathematical card game"
+          : ""
+          }
       </h5>
 
       {gameStarted && (
         <>
           <div className="d-flex flex-sm-row justify-content-center align-items-center my-4 gap-3 controls-target-wrapper">
+
+            {/* Small-screen Reshuffle button placed to the LEFT of the target (height-centered) */}
+            <div
+              className="d-flex flex-column flex-nowrap small-screen-controls position-absolute"
+              style={{ left: "calc(50% - 130px)", transform: "translateX(-50%)" }}
+            >
+              <button
+                className="img-button"
+                onClick={() => startNewRound(true)}
+                style={{ transform: "scale(1.2)", transformOrigin: "center" }}
+                disabled={
+                  isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying
+                }
+              >
+                <img src="./images/reshuffle-button.png" alt="Reshuffle" />
+              </button>
+            </div>
 
             <div className="target">
               <div className="target-border-bs">
@@ -966,7 +985,7 @@ export default function App() {
 
             <div
               className="d-flex flex-column flex-nowrap small-screen-controls position-absolute"
-              style={{ left: "calc(50% + 130px)" }}
+              style={{ left: "calc(50% + 130px)", transform: "translateX(-50%)" }}
             >
               <button
                 className="img-button"
@@ -992,16 +1011,6 @@ export default function App() {
                 }
               >
                 <img src="./images/reset-button.png" alt="Reset" />
-              </button>
-
-              <button
-                className="img-button"
-                onClick={() => startNewRound(true)}
-                disabled={
-                  isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying
-                }
-              >
-                <img src="./images/reshuffle-button.png" alt="Reshuffle" />
               </button>
 
               <button
