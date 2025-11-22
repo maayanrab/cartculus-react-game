@@ -448,11 +448,6 @@ export default function App() {
 
     // When server sends a pending deal, load the cards face-down and ack when ready.
     socket.on("deal_pending", (data) => {
-      // If currently waiting after finishing, queue the pending deal until the round fully completes
-      if (waitingForOthersAfterWinRef.current) {
-        pendingDealRef.current = data;
-        return;
-      }
       processDealPending(data);
     });
 
