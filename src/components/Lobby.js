@@ -46,21 +46,31 @@ export default function Lobby({ onJoined, fullScreen = false }) {
 
   // Inner content split out to avoid duplicating JSX
   function InnerLobbyContent() {
+    const handleSubmit = (e) => {
+      e.preventDefault();
+      // Attempt to create and join the room when Enter is pressed in either input
+      if (name && name.trim() !== "" && roomName && roomName.trim() !== "") {
+        createRoom();
+      }
+    };
+
     return (
       <>
         <h4 className="mb-3">Multiplayer</h4>
-        <div className="mb-2">
-          <label className="form-label">Player Name</label>
-          <input className="form-control" value={name} onChange={(e) => setName(e.target.value)} placeholder="" />
-        </div>
-
-        <div className="mb-2 text-center">
-          <label className="form-label">Create Room</label>
-          <input className="form-control form-control-sm mb-1" placeholder="Room display name (required)" value={roomName} onChange={(e) => setRoomName(e.target.value)} />
-          <div className="d-flex justify-content-center mt-2">
-            <button className="btn btn-success btn-sm" onClick={createRoom} disabled={!name || !roomName}>Create & Join</button>
+        <form onSubmit={handleSubmit}>
+          <div className="mb-2">
+            <label className="form-label">Player Name</label>
+            <input className="form-control" value={name} onChange={(e) => setName(e.target.value)} placeholder="" />
           </div>
-        </div>
+
+          <div className="mb-2 text-center">
+            <label className="form-label">Create Room</label>
+            <input className="form-control form-control-sm mb-1" placeholder="Room display name (required)" value={roomName} onChange={(e) => setRoomName(e.target.value)} />
+            <div className="d-flex justify-content-center mt-2">
+              <button type="submit" className="btn btn-success btn-sm" disabled={!name || !roomName}>Create & Join</button>
+            </div>
+          </div>
+        </form>
 
         <div className="mb-2">
           <label className="form-label">Or join existing</label>
