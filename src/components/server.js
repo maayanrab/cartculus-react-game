@@ -249,7 +249,7 @@ io.on("connection", (socket) => {
       }
     }
 
-    // NEW: if all players are now in "waiting" state, schedule next round.
+    // if all players are now in "waiting" state, schedule next round.
     try {
       scheduleNewRoundIfAllWaiting(roomId);
     } catch (e) {
@@ -280,6 +280,11 @@ io.on("connection", (socket) => {
             // If the reveal window expired and no one solved, deal a new round (no points).
             if (!result.awardedTo && result.broadcast && result.broadcast.expired) {
               try {
+                // FIX: mark last player as finished when reveal times out
+                rooms.markPlayerRoundFinished(roomId, result.broadcast.originPlayerId);
+
+                // Now everyone should be in "waiting", so the auto-next-round
+                // logic based on waiting-state will also be consistent with logs.
                 startNewRoundForRoom(roomId);
               } catch (e) {
                 console.error(
@@ -326,7 +331,7 @@ io.on("connection", (socket) => {
       }
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 
-      // NEW: after a no-solution resolution, check if everyone is waiting
+      // after a no-solution resolution, check if everyone is waiting
       try {
         scheduleNewRoundIfAllWaiting(roomId);
       } catch (e) {
@@ -376,7 +381,7 @@ io.on("connection", (socket) => {
 
       io.to(roomId).emit("no_solution_timer", result.broadcast);
 
-      // NEW: after skip-resolution, check if everyone is waiting
+      // after skip-resolution, check if everyone is waiting
       try {
         scheduleNewRoundIfAllWaiting(roomId);
       } catch (e) {
