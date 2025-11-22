@@ -47,6 +47,9 @@ export default function App() {
   const [scores, setScores] = useState({});
   const [noSolutionTimer, setNoSolutionTimer] = useState(null);
   const [showMultiplayer, setShowMultiplayer] = useState(false);
+  const [waitingForOthers, setWaitingForOthers] = useState(false);
+  const [pendingLoadedCount, setPendingLoadedCount] = useState(0);
+  const [pendingTotalCount, setPendingTotalCount] = useState(0);
 
   // Animation states
   const [isReshuffling, setIsReshuffling] = useState(false);
@@ -338,6 +341,8 @@ export default function App() {
     });
 
     socket.on("deal_riddle", (data) => {
+      // reveal moment: stop waiting UI
+      setWaitingForOthers(false);
       const myId = socket.getSocketId();
       const myHand = (data.perPlayerHands && data.perPlayerHands[myId]) || [];
       // Play the entry animation for incoming multiplayer deal so clients
@@ -376,6 +381,10 @@ export default function App() {
         setHandCardsFlipped(false);
         setTargetCardFlipped(false);
         setGameStarted(true);
+        // Show waiting UI until server reveals
+        setWaitingForOthers(true);
+        setPendingLoadedCount(0);
+        setPendingTotalCount((prev) => prev);
         // Ack to server that this client has loaded the pending deal
         try { socket.emitDealLoaded(data.roomId || multiplayerRoom); } catch (e) {}
       } catch (e) {
@@ -436,6 +445,17 @@ export default function App() {
         }
       } catch (e) {
         console.error("handling score_update", e);
+      }
+    });
+
+    socket.on("pending_status", (payload) => {
+      try {
+        if (!payload) return;
+        setPendingLoadedCount(payload.loadedCount || 0);
+        setPendingTotalCount(payload.total || 0);
+        setWaitingForOthers((payload.loadedCount || 0) < (payload.total || 0));
+      } catch (e) {
+        console.error("error handling pending_status", e);
       }
     });
 
@@ -1269,6 +1289,14 @@ export default function App() {
           roomId={multiplayerRoom}
           onStartGame={(roomId) => socket.startGame(roomId)}
         />
+      )}
+      {waitingForOthers && (
+        <div className="alert alert-info d-flex align-items-center justify-content-center mt-2" role="status" style={{ zIndex: 1200 }}>
+          <div className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
+          <div>
+            Waiting for others to load... ({pendingLoadedCount}/{pendingTotalCount})
+          </div>
+        </div>
       )}
       {noSolutionTimer && (
         <NoSolutionTimer
