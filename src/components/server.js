@@ -12,23 +12,36 @@ const io = new Server(server, {
 const rooms = new Rooms();
 
 /**
- * Helper: start a new round for a room (deal 4 cards + shared target to everyone)
+ * Deal a brand-new round to everyone in the room:
+ *  - calls rooms.startGame (which resets per-round flags & hands)
+ *  - stores pendingDeal + pendingDealLoaded
+ *  - sends "deal_pending" to each player with their own 4 cards + shared target
+ *  - after 8s (or when all clients confirm "deal_loaded"), sends "deal_riddle"
  */
 function startNewRoundForRoom(roomId) {
-  const deal = rooms.startGame(roomId);
   const room = rooms.getRoom(roomId);
   if (!room) return;
 
-  room.pendingDeal = deal.publicDeal;
-  room.pendingDealLoaded = new Set();
-
-  if (room.pendingDealTimeout) {
-    clearTimeout(room.pendingDealTimeout);
-    room.pendingDealTimeout = null;
+  // Clear any "auto next round" timer that might be hanging
+  if (room.autoNextRoundTimeout) {
+    clearTimeout(room.autoNextRoundTimeout);
+    room.autoNextRoundTimeout = null;
   }
 
-  // Send each player only their hand (face-down animation on client)
-  for (const p of room.players.values()) {
+  const deal = rooms.startGame(roomId);
+  const r = rooms.getRoom(roomId);
+  if (!r) return;
+
+  r.pendingDeal = deal.publicDeal;
+  r.pendingDealLoaded = new Set();
+
+  if (r.pendingDealTimeout) {
+    clearTimeout(r.pendingDealTimeout);
+    r.pendingDealTimeout = null;
+  }
+
+  // Send each player only their hand
+  for (const p of r.players.values()) {
     const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
     io.to(p.socketId).emit("deal_pending", {
       roomId,
@@ -39,16 +52,16 @@ function startNewRoundForRoom(roomId) {
 
   io.to(roomId).emit("pending_status", {
     loadedCount: 0,
-    total: room.players.size,
+    total: r.players.size,
   });
 
-  room.pendingDealTimeout = setTimeout(() => {
-    const r = rooms.getRoom(roomId);
-    if (r && r.pendingDeal) {
-      io.to(roomId).emit("deal_riddle", r.pendingDeal);
-      r.pendingDeal = null;
-      r.pendingDealLoaded = null;
-      r.pendingDealTimeout = null;
+  r.pendingDealTimeout = setTimeout(() => {
+    const rr = rooms.getRoom(roomId);
+    if (rr && rr.pendingDeal) {
+      io.to(roomId).emit("deal_riddle", rr.pendingDeal);
+      rr.pendingDeal = null;
+      rr.pendingDealLoaded = null;
+      rr.pendingDealTimeout = null;
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
     }
   }, 8000);
@@ -57,27 +70,30 @@ function startNewRoundForRoom(roomId) {
 }
 
 /**
- * Helper: if (and only if) all players in the room are in "waiting" state,
- * schedule a new round (multiplayer).
+ * When EVERY player in the room is in "waiting" state,
+ * schedule a new round to be dealt after a short delay.
+ *
+ * Uses rooms.areAllPlayersWaiting(roomId) to check.
  */
 function scheduleNewRoundIfAllWaiting(roomId) {
   const room = rooms.getRoom(roomId);
   if (!room) return;
 
-  // Don't start another round if one is already queued/dealing
+  // If a round is already pending, don't double-schedule
   if (room.pendingDeal) return;
 
-  // Avoid double timers
+  // If there's already an auto-next timer, don't create another
   if (room.autoNextRoundTimeout) return;
 
   if (!rooms.areAllPlayersWaiting(roomId)) return;
 
   room.autoNextRoundTimeout = setTimeout(() => {
-    const currentRoom = rooms.getRoom(roomId);
-    if (!currentRoom) return;
-    currentRoom.autoNextRoundTimeout = null;
+    const r = rooms.getRoom(roomId);
+    if (!r) return;
+    r.autoNextRoundTimeout = null;
 
-    // Re-check condition at fire time (players may have changed)
+    // Re-check conditions at fire time
+    if (r.pendingDeal) return;
     if (!rooms.areAllPlayersWaiting(roomId)) return;
 
     startNewRoundForRoom(roomId);
@@ -233,11 +249,11 @@ io.on("connection", (socket) => {
       }
     }
 
-    // NEW: If all players are in "waiting" state, start next round
+    // NEW: if all players are now in "waiting" state, schedule next round.
     try {
       scheduleNewRoundIfAllWaiting(roomId);
     } catch (e) {
-      console.error("error auto-starting next round", e);
+      console.error("error scheduling next round after play_move", e);
     }
 
     // After someone finishes, if only one player remains with a live hand, start reveal timer
@@ -264,9 +280,7 @@ io.on("connection", (socket) => {
             // If the reveal window expired and no one solved, deal a new round (no points).
             if (!result.awardedTo && result.broadcast && result.broadcast.expired) {
               try {
-                setTimeout(() => {
-                  startNewRoundForRoom(roomId);
-                }, 1500);
+                startNewRoundForRoom(roomId);
               } catch (e) {
                 console.error(
                   "error auto-starting next round after reveal timeout",
@@ -312,12 +326,12 @@ io.on("connection", (socket) => {
       }
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 
-      // NEW: If all players are in "waiting" state, start next round
+      // NEW: after a no-solution resolution, check if everyone is waiting
       try {
         scheduleNewRoundIfAllWaiting(roomId);
       } catch (e) {
         console.error(
-          "error auto-starting next round after no_solution",
+          "error scheduling next round after no_solution",
           e
         );
       }
@@ -362,18 +376,20 @@ io.on("connection", (socket) => {
 
       io.to(roomId).emit("no_solution_timer", result.broadcast);
 
-      // NEW: If all players are in "waiting" state, start next round
+      // NEW: after skip-resolution, check if everyone is waiting
       try {
         scheduleNewRoundIfAllWaiting(roomId);
       } catch (e) {
-        console.error("error auto-starting next round after skip", e);
+        console.error(
+          "error scheduling next round after skip_vote",
+          e
+        );
       }
     }
   });
 
   socket.on("request_reshuffle", ({ roomId }) => {
-    // Manual reshuffle request (e.g., from client button) still allowed –
-    // uses the same pipeline as an auto next round.
+    // Manual reshuffle request uses same pipeline as an auto next round.
     startNewRoundForRoom(roomId);
   });
 

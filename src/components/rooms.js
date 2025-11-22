@@ -24,6 +24,7 @@ class Rooms {
         pendingDeal: null,
         pendingDealLoaded: null,
         pendingDealTimeout: null,
+        autoNextRoundTimeout: null, // NEW: used by server to avoid double-scheduling
       });
     }
     return this.rooms.get(id);
@@ -171,6 +172,8 @@ class Rooms {
   }
 
   // Per-round reward ordering
+  // First scoring event in the round: 10 points
+  // 2nd: 7, 3rd: 5, 4th: 3, and 1 point after that
   getNextPoints(roomId) {
     const room = this.rooms.get(roomId);
     if (!room) return 1;
@@ -184,6 +187,8 @@ class Rooms {
     return pointsByOrder[totalSolves] || 1;
   }
 
+  // Award points to a player for finishing in this round.
+  // Uses getNextPoints() so that later finishes get fewer points.
   playerFinished(roomId, playerId, isNoSolutionChallenge = false) {
     const room = this.rooms.get(roomId);
     if (!room) return null;
@@ -193,6 +198,7 @@ class Rooms {
       null;
     if (!player) return null;
 
+    // Prevent double-award if player already closed their round (except for no-solution challenges)
     if (!isNoSolutionChallenge && player.roundFinished) return null;
 
     const pts = this.getNextPoints(roomId);
@@ -233,7 +239,8 @@ class Rooms {
     player.finishedStatus = "waiting";
   }
 
-  // NEW: helper to know when everyone is in "waiting" state (for auto new round)
+  // NEW: helper used by the server to know when to deal a new round.
+  // Returns true only if there is at least one player && every player is in "waiting" state.
   areAllPlayersWaiting(roomId) {
     const room = this.rooms.get(roomId);
     if (!room) return false;
@@ -266,6 +273,7 @@ class Rooms {
 
     room.noSolution = { originPlayerId, expiresAt, votes, timeoutId: null };
 
+    // Origin player is now waiting for verdict
     this.markPlayerWaiting(roomId, originPlayerId);
 
     room.noSolution.timeoutId = setTimeout(() => {
@@ -380,7 +388,8 @@ class Rooms {
     };
   }
 
-  // 👉 Reveal timer only controls time window – no auto points on expiry
+  // Reveal timer – controls a 30s window where the last player can still solve.
+  // No points are given automatically on expiry.
   startRevealTimer(roomId, originPlayerId, cb) {
     const room = this.rooms.get(roomId);
     if (!room) return;
