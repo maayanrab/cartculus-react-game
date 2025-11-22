@@ -25,17 +25,28 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
     io.emit("rooms_list", rooms.listRooms());
     console.log(`${playerName} joined ${roomId}`);
+
     // If a game/deal is already in progress for this room, send the joining socket
     // a state snapshot so they receive their hand and the shared target immediately.
     try {
       const room = rooms.getRoom(roomId);
-      // If there's a pending deal awaiting reveal, send the pending payload to this socket
       if (room && room.pendingDeal) {
-        const hand = (room.pendingDeal.perPlayerHands && room.pendingDeal.perPlayerHands[socket.id]) || [];
-        socket.emit("deal_pending", { roomId, hand, target: room.pendingDeal.target });
+        const hand =
+          (room.pendingDeal.perPlayerHands &&
+            room.pendingDeal.perPlayerHands[socket.id]) ||
+          [];
+        socket.emit("deal_pending", {
+          roomId,
+          hand,
+          target: room.pendingDeal.target,
+        });
       } else {
         const state = rooms.getStateForRoom(roomId, socket.id);
-        if (state && (Array.isArray(state.cards) && state.cards.length > 0 || state.target)) {
+        if (
+          state &&
+          ((Array.isArray(state.cards) && state.cards.length > 0) ||
+            state.target)
+        ) {
           socket.emit("state_sync", state);
         }
       }
@@ -49,11 +60,14 @@ io.on("connection", (socket) => {
     socket.leave(roomId);
     io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
     io.emit("rooms_list", rooms.listRooms());
+
     // If a pending deal exists, check whether everyone has loaded given the new player set
     try {
       const room = rooms.getRoom(roomId);
       if (room && room.pendingDeal) {
-        const loaded = room.pendingDealLoaded ? room.pendingDealLoaded.size : 0;
+        const loaded = room.pendingDealLoaded
+          ? room.pendingDealLoaded.size
+          : 0;
         if (loaded === room.players.size) {
           if (room.pendingDealTimeout) {
             clearTimeout(room.pendingDealTimeout);
@@ -64,11 +78,14 @@ io.on("connection", (socket) => {
           room.pendingDealLoaded = null;
           io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
         } else {
-          io.to(roomId).emit("pending_status", { loadedCount: loaded, total: room.players.size });
+          io.to(roomId).emit("pending_status", {
+            loadedCount: loaded,
+            total: room.players.size,
+          });
         }
       }
     } catch (e) {
-      console.error('error handling pending after leave', e);
+      console.error("error handling pending after leave", e);
     }
   });
 
@@ -77,23 +94,32 @@ io.on("connection", (socket) => {
     if (!room) return;
     // only host may start game
     if (room.host !== socket.id) return;
+
     const deal = rooms.startGame(roomId);
-    // Store pending deal and wait for clients to load before revealing
+
     room.pendingDeal = deal.publicDeal;
     room.pendingDealLoaded = new Set();
-    // Cancel any previous pending timeout
+
     if (room.pendingDealTimeout) {
       clearTimeout(room.pendingDealTimeout);
       room.pendingDealTimeout = null;
     }
-    // Send each player only their hand (so they can load but keep cards face-down)
+
+    // Send each player only their hand (face-down animation on client)
     for (const p of room.players.values()) {
       const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
-      io.to(p.socketId).emit("deal_pending", { roomId, hand, target: deal.publicDeal.target });
+      io.to(p.socketId).emit("deal_pending", {
+        roomId,
+        hand,
+        target: deal.publicDeal.target,
+      });
     }
-    // Broadcast pending status
-    io.to(roomId).emit("pending_status", { loadedCount: 0, total: room.players.size });
-    // Auto-reveal after 8 seconds if not everyone has loaded
+
+    io.to(roomId).emit("pending_status", {
+      loadedCount: 0,
+      total: room.players.size,
+    });
+
     room.pendingDealTimeout = setTimeout(() => {
       if (room && room.pendingDeal) {
         io.to(roomId).emit("deal_riddle", room.pendingDeal);
@@ -103,82 +129,85 @@ io.on("connection", (socket) => {
         io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
       }
     }, 8000);
+
     io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
   });
 
   socket.on("play_move", ({ roomId, playerId, move }) => {
     const room = rooms.getRoom(roomId);
     let isNoSolutionChallenge = false;
-    
+
     // Check if this is solving someone else's "no solution" challenge
     if (room && room.noSolution && room.noSolution.originPlayerId !== playerId) {
       isNoSolutionChallenge = true;
     }
-    
+
     const awarded = rooms.playerFinished(roomId, playerId, isNoSolutionChallenge);
+
     // If someone finished while a no-solution or reveal timer was active, cancel it
     try {
       if (room && room.noSolution) {
-        // If solver is not the origin, cancel the noSolution timer (solver stole points)
         if (room.noSolution.originPlayerId !== playerId) {
           const originId = room.noSolution.originPlayerId;
           rooms.cancelNoSolution(roomId);
-          // Mark origin as round-finished (they wait without cards until next round)
           rooms.markPlayerRoundFinished(roomId, originId);
-          io.to(roomId).emit("no_solution_timer", { originPlayerId: originId, skipped: false, resolvedBy: playerId });
-          
-          // If solver hasn't finished their own round yet, restore their original cards so they can continue
-          // If solver already finished, they stay without cards (correct behavior)
-          const solver = Array.from(room.players.values()).find((p) => p.playerId === playerId);
+          io.to(roomId).emit("no_solution_timer", {
+            originPlayerId: originId,
+            skipped: false,
+            resolvedBy: playerId,
+          });
+
+          const solver = Array.from(room.players.values()).find(
+            (p) => p.playerId === playerId
+          );
           if (solver && !solver.roundFinished) {
             const state = rooms.getStateForRoom(roomId, playerId);
             io.to(socket.id).emit("state_sync", state);
           }
-          // Other players keep their current hands and continue playing
         }
       }
+
       if (room && room.reveal) {
-        // If someone solved during reveal, cancel the reveal timer
         if (room.reveal.originPlayerId !== playerId) {
           const originId = room.reveal.originPlayerId;
           rooms.cancelReveal(roomId);
-          // Mark origin as round-finished (they wait without cards)
           rooms.markPlayerRoundFinished(roomId, originId);
-          io.to(roomId).emit("reveal_timer", { originPlayerId: originId, skipped: false, resolvedBy: playerId });
-          // Don't restore hands here - players keep their current hands and continue playing
+          io.to(roomId).emit("reveal_timer", {
+            originPlayerId: originId,
+            skipped: false,
+            resolvedBy: playerId,
+          });
         }
       }
     } catch (e) {
       console.error("error handling timers on play_move", e);
     }
 
-    // After a player solves, handle differently based on whether it's their own cards or a "no solution" challenge
     if (awarded) {
-      io.to(roomId).emit("score_update", { scores: rooms.getScores(roomId), awardedTo: awarded });
+      io.to(roomId).emit("score_update", {
+        scores: rooms.getScores(roomId),
+        awardedTo: awarded,
+      });
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-      
-      // If solving own cards, they wait without cards
-      // If solving someone else's "no solution" challenge, they might get their original cards back
-      // (handled above in the noSolution section)
+
       if (!isNoSolutionChallenge) {
-        // Don't restore solver's hand - they wait until everyone finishes
+        // Solver waits without cards; everyone else continues
       }
     }
 
-    // If all players finished their round (roundFinished === true), start a fresh round after a short delay
+    // If all players finished their round, start a fresh round after a short delay
     try {
       const room = rooms.getRoom(roomId);
       if (room) {
         const players = Array.from(room.players.values());
-        const allFinished = players.length > 0 && players.every((p) => p.roundFinished === true);
-        // Double-check: make sure we have players and all are truly finished
+        const allFinished =
+          players.length > 0 &&
+          players.every((p) => p.roundFinished === true);
         if (allFinished && players.length === room.players.size) {
-          console.log(`[${roomId}] All players finished, starting new round. Players:`, players.map(p => ({ id: p.playerId, name: p.name, roundFinished: p.roundFinished })));
           setTimeout(() => {
             const deal = rooms.startGame(roomId);
-            // Use pending/reveal flow for auto-start as well
             const r = rooms.getRoom(roomId);
-            if (!r) return; // Room might have been deleted
+            if (!r) return;
             r.pendingDeal = deal.publicDeal;
             r.pendingDealLoaded = new Set();
             if (r.pendingDealTimeout) {
@@ -187,24 +216,30 @@ io.on("connection", (socket) => {
             }
             for (const p of r.players.values()) {
               const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
-              io.to(p.socketId).emit("deal_pending", { roomId, hand, target: deal.publicDeal.target });
+              io.to(p.socketId).emit("deal_pending", {
+                roomId,
+                hand,
+                target: deal.publicDeal.target,
+              });
             }
-            io.to(roomId).emit("pending_status", { loadedCount: 0, total: r.players.size });
+            io.to(roomId).emit("pending_status", {
+              loadedCount: 0,
+              total: r.players.size,
+            });
             r.pendingDealTimeout = setTimeout(() => {
               if (r && r.pendingDeal) {
                 io.to(roomId).emit("deal_riddle", r.pendingDeal);
                 r.pendingDeal = null;
                 r.pendingDealLoaded = null;
                 r.pendingDealTimeout = null;
-                io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+                io.to(roomId).emit(
+                  "lobby_update",
+                  rooms.getRoomPublic(roomId)
+                );
               }
             }, 8000);
             io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
           }, 1500);
-        } else {
-          // Debug log when not all finished
-          const finishedCount = players.filter(p => p.roundFinished === true).length;
-          console.log(`[${roomId}] Not all players finished yet. Finished: ${finishedCount}/${players.length}. Players:`, players.map(p => ({ id: p.playerId, name: p.name, roundFinished: p.roundFinished })));
         }
       }
     } catch (e) {
@@ -215,15 +250,77 @@ io.on("connection", (socket) => {
     try {
       const room = rooms.getRoom(roomId);
       if (room) {
-        const unfinished = Array.from(room.players.values()).filter((p) => !p.roundFinished);
+        const unfinished = Array.from(room.players.values()).filter(
+          (p) => !p.roundFinished
+        );
         if (unfinished.length === 1) {
           const remainingId = unfinished[0].playerId;
+
+          // 👉 CHANGED: when reveal timer expires with no solver, start new round with no points
           rooms.startRevealTimer(roomId, remainingId, (result) => {
             io.to(roomId).emit("reveal_timer", result.broadcast);
             if (result.awardedTo) {
-              io.to(roomId).emit("score_update", { scores: rooms.getScores(roomId), awardedTo: result.awardedTo });
+              io.to(roomId).emit("score_update", {
+                scores: rooms.getScores(roomId),
+                awardedTo: result.awardedTo,
+              });
             }
             io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+
+            // If the reveal window expired and no one solved, deal a new round (no points).
+            if (!result.awardedTo && result.broadcast && result.broadcast.expired) {
+              try {
+                setTimeout(() => {
+                  const deal = rooms.startGame(roomId);
+                  const r = rooms.getRoom(roomId);
+                  if (!r) return;
+                  r.pendingDeal = deal.publicDeal;
+                  r.pendingDealLoaded = new Set();
+                  if (r.pendingDealTimeout) {
+                    clearTimeout(r.pendingDealTimeout);
+                    r.pendingDealTimeout = null;
+                  }
+                  for (const p of r.players.values()) {
+                    const hand =
+                      deal.publicDeal.perPlayerHands[p.playerId] || [];
+                    io.to(p.socketId).emit("deal_pending", {
+                      roomId,
+                      hand,
+                      target: deal.publicDeal.target,
+                    });
+                  }
+                  io.to(roomId).emit("pending_status", {
+                    loadedCount: 0,
+                    total: r.players.size,
+                  });
+                  r.pendingDealTimeout = setTimeout(() => {
+                    const roomAfter = rooms.getRoom(roomId);
+                    if (roomAfter && roomAfter.pendingDeal) {
+                      io.to(roomId).emit(
+                        "deal_riddle",
+                        roomAfter.pendingDeal
+                      );
+                      roomAfter.pendingDeal = null;
+                      roomAfter.pendingDealLoaded = null;
+                      roomAfter.pendingDealTimeout = null;
+                      io.to(roomId).emit(
+                        "lobby_update",
+                        rooms.getRoomPublic(roomId)
+                      );
+                    }
+                  }, 8000);
+                  io.to(roomId).emit(
+                    "lobby_update",
+                    rooms.getRoomPublic(roomId)
+                  );
+                }, 1500);
+              } catch (e) {
+                console.error(
+                  "error auto-starting next round after reveal timeout",
+                  e
+                );
+              }
+            }
           });
         }
       }
@@ -236,30 +333,39 @@ io.on("connection", (socket) => {
     rooms.startNoSolutionTimer(roomId, playerId, (result) => {
       io.to(roomId).emit("no_solution_timer", result.broadcast);
       if (result.awardedTo) {
-        io.to(roomId).emit("score_update", { scores: rooms.getScores(roomId), awardedTo: result.awardedTo });
-        // After awarding points due to no-solution expiry, ensure each player
-        // receives a state snapshot so clients restore their own hands.
+        io.to(roomId).emit("score_update", {
+          scores: rooms.getScores(roomId),
+          awardedTo: result.awardedTo,
+        });
+
+        // After awarding due to no-solution expiry, restore other players' hands
         try {
           const room = rooms.getRoom(roomId);
           if (room) {
-            const originId = result.broadcast && result.broadcast.originPlayerId;
+            const originId =
+              result.broadcast && result.broadcast.originPlayerId;
             for (const p of room.players.values()) {
-              // Do not restore the origin player's hand here; the origin remains waiting until next round
               if (p.playerId === originId) continue;
               const state = rooms.getStateForRoom(roomId, p.playerId);
               io.to(p.socketId).emit("state_sync", state);
             }
           }
         } catch (e) {
-          console.error('error emitting state_sync after no_solution award', e);
+          console.error(
+            "error emitting state_sync after no_solution award",
+            e
+          );
         }
       }
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-      // If all players are finished now, start next round
+
+      // If all players finished now, start next round
       try {
         const room = rooms.getRoom(roomId);
         if (room) {
-          const allFinished = Array.from(room.players.values()).every((p) => p.roundFinished === true);
+          const allFinished = Array.from(room.players.values()).every(
+            (p) => p.roundFinished === true
+          );
           if (allFinished) {
             setTimeout(() => {
               const deal = rooms.startGame(roomId);
@@ -271,17 +377,28 @@ io.on("connection", (socket) => {
                 r.pendingDealTimeout = null;
               }
               for (const p of r.players.values()) {
-                const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
-                io.to(p.socketId).emit("deal_pending", { roomId, hand, target: deal.publicDeal.target });
+                const hand =
+                  deal.publicDeal.perPlayerHands[p.playerId] || [];
+                io.to(p.socketId).emit("deal_pending", {
+                  roomId,
+                  hand,
+                  target: deal.publicDeal.target,
+                });
               }
-              io.to(roomId).emit("pending_status", { loadedCount: 0, total: r.players.size });
+              io.to(roomId).emit("pending_status", {
+                loadedCount: 0,
+                total: r.players.size,
+              });
               r.pendingDealTimeout = setTimeout(() => {
                 if (r && r.pendingDeal) {
                   io.to(roomId).emit("deal_riddle", r.pendingDeal);
                   r.pendingDeal = null;
                   r.pendingDealLoaded = null;
                   r.pendingDealTimeout = null;
-                  io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+                  io.to(roomId).emit(
+                    "lobby_update",
+                    rooms.getRoomPublic(roomId)
+                  );
                 }
               }, 8000);
               io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
@@ -289,41 +406,59 @@ io.on("connection", (socket) => {
           }
         }
       } catch (e) {
-        console.error('error auto-starting next round after no_solution', e);
+        console.error(
+          "error auto-starting next round after no_solution",
+          e
+        );
       }
     });
 
-    io.to(roomId).emit("no_solution_timer", rooms.getNoSolutionTimerPublic(roomId));
+    io.to(roomId).emit(
+      "no_solution_timer",
+      rooms.getNoSolutionTimerPublic(roomId)
+    );
   });
 
   socket.on("skip_vote", ({ roomId, playerId, originPlayerId }) => {
     const done = rooms.registerSkipVote(roomId, playerId, originPlayerId);
-    io.to(roomId).emit("no_solution_timer", rooms.getNoSolutionTimerPublic(roomId));
+    io.to(roomId).emit(
+      "no_solution_timer",
+      rooms.getNoSolutionTimerPublic(roomId)
+    );
     if (done) {
       const result = rooms.finishNoSolutionBySkip(roomId, originPlayerId);
-      io.to(roomId).emit("score_update", { scores: rooms.getScores(roomId), awardedTo: result.awardedTo });
+      io.to(roomId).emit("score_update", {
+        scores: rooms.getScores(roomId),
+        awardedTo: result.awardedTo,
+      });
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-      // After awarding due to skip completion, send per-player state_sync so
-      // each client receives their own original hand back.
+
+      // After awarding due to skip completion, restore other players' hands
       try {
         const room = rooms.getRoom(roomId);
         if (room) {
-            for (const p of room.players.values()) {
-              // Do not restore origin's hand to the origin; origin stays waiting until next round
-              if (p.playerId === originPlayerId) continue;
-              const state = rooms.getStateForRoom(roomId, p.playerId);
-              io.to(p.socketId).emit("state_sync", state);
-            }
+          for (const p of room.players.values()) {
+            if (p.playerId === originPlayerId) continue;
+            const state = rooms.getStateForRoom(roomId, p.playerId);
+            io.to(p.socketId).emit("state_sync", state);
+          }
         }
       } catch (e) {
-        console.error('error emitting state_sync after skip finish', e);
+        console.error(
+          "error emitting state_sync after skip finish",
+          e
+        );
       }
+
       io.to(roomId).emit("no_solution_timer", result.broadcast);
-      // If all players are finished now, start next round
+
+      // If all players finished now, start next round
       try {
         const room = rooms.getRoom(roomId);
         if (room) {
-          const allFinished = Array.from(room.players.values()).every((p) => p.roundFinished === true);
+          const allFinished = Array.from(room.players.values()).every(
+            (p) => p.roundFinished === true
+          );
           if (allFinished) {
             setTimeout(() => {
               const deal = rooms.startGame(roomId);
@@ -335,17 +470,28 @@ io.on("connection", (socket) => {
                 r.pendingDealTimeout = null;
               }
               for (const p of r.players.values()) {
-                const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
-                io.to(p.socketId).emit("deal_pending", { roomId, hand, target: deal.publicDeal.target });
+                const hand =
+                  deal.publicDeal.perPlayerHands[p.playerId] || [];
+                io.to(p.socketId).emit("deal_pending", {
+                  roomId,
+                  hand,
+                  target: deal.publicDeal.target,
+                });
               }
-              io.to(roomId).emit("pending_status", { loadedCount: 0, total: r.players.size });
+              io.to(roomId).emit("pending_status", {
+                loadedCount: 0,
+                total: r.players.size,
+              });
               r.pendingDealTimeout = setTimeout(() => {
                 if (r && r.pendingDeal) {
                   io.to(roomId).emit("deal_riddle", r.pendingDeal);
                   r.pendingDeal = null;
                   r.pendingDealLoaded = null;
                   r.pendingDealTimeout = null;
-                  io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+                  io.to(roomId).emit(
+                    "lobby_update",
+                    rooms.getRoomPublic(roomId)
+                  );
                 }
               }, 8000);
               io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
@@ -353,7 +499,7 @@ io.on("connection", (socket) => {
           }
         }
       } catch (e) {
-        console.error('error auto-starting next round after skip', e);
+        console.error("error auto-starting next round after skip", e);
       }
     }
   });
@@ -370,9 +516,16 @@ io.on("connection", (socket) => {
       }
       for (const p of room.players.values()) {
         const hand = deal.publicDeal.perPlayerHands[p.playerId] || [];
-        io.to(p.socketId).emit("deal_pending", { roomId, hand, target: deal.publicDeal.target });
+        io.to(p.socketId).emit("deal_pending", {
+          roomId,
+          hand,
+          target: deal.publicDeal.target,
+        });
       }
-      io.to(roomId).emit("pending_status", { loadedCount: 0, total: room.players.size });
+      io.to(roomId).emit("pending_status", {
+        loadedCount: 0,
+        total: room.players.size,
+      });
       room.pendingDealTimeout = setTimeout(() => {
         if (room && room.pendingDeal) {
           io.to(roomId).emit("deal_riddle", room.pendingDeal);
@@ -391,11 +544,13 @@ io.on("connection", (socket) => {
     if (!room || !room.pendingDeal) return;
     room.pendingDealLoaded = room.pendingDealLoaded || new Set();
     room.pendingDealLoaded.add(socket.id);
-    // Broadcast updated pending status
-    io.to(roomId).emit("pending_status", { loadedCount: room.pendingDealLoaded.size, total: room.players.size });
-    // If everyone has loaded, reveal the deal for all
+
+    io.to(roomId).emit("pending_status", {
+      loadedCount: room.pendingDealLoaded.size,
+      total: room.players.size,
+    });
+
     if (room.pendingDealLoaded.size === room.players.size) {
-      // cancel timeout
       if (room.pendingDealTimeout) {
         clearTimeout(room.pendingDealTimeout);
         room.pendingDealTimeout = null;
@@ -412,11 +567,13 @@ io.on("connection", (socket) => {
     io.emit("rooms_list", rooms.listRooms());
     rooms.broadcastAllLobby(io);
     console.log("socket disconnected:", socket.id);
-    // If a pending deal exists in any room this socket belonged to, re-evaluate
+
     try {
       for (const [roomId, room] of rooms.rooms) {
         if (room.pendingDeal) {
-          const loaded = room.pendingDealLoaded ? room.pendingDealLoaded.size : 0;
+          const loaded = room.pendingDealLoaded
+            ? room.pendingDealLoaded.size
+            : 0;
           if (loaded === room.players.size) {
             if (room.pendingDealTimeout) {
               clearTimeout(room.pendingDealTimeout);
@@ -425,14 +582,20 @@ io.on("connection", (socket) => {
             io.to(roomId).emit("deal_riddle", room.pendingDeal);
             room.pendingDeal = null;
             room.pendingDealLoaded = null;
-            io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+            io.to(roomId).emit(
+              "lobby_update",
+              rooms.getRoomPublic(roomId)
+            );
           } else {
-            io.to(roomId).emit("pending_status", { loadedCount: loaded, total: room.players.size });
+            io.to(roomId).emit("pending_status", {
+              loadedCount: loaded,
+              total: room.players.size,
+            });
           }
         }
       }
     } catch (e) {
-      console.error('error handling pending after disconnect', e);
+      console.error("error handling pending after disconnect", e);
     }
   });
 });

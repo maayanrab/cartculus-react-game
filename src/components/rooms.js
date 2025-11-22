@@ -21,6 +21,9 @@ class Rooms {
         deal: null,
         name: null,
         host: null,
+        pendingDeal: null,
+        pendingDealLoaded: null,
+        pendingDealTimeout: null,
       });
     }
     return this.rooms.get(id);
@@ -121,7 +124,7 @@ class Rooms {
   startGame(roomId) {
     const room = this._ensureRoom(roomId);
 
-    // Reset per-round flags & counters
+    // Reset per-round flags & per-round solve counters
     for (const p of room.players.values()) {
       p.finishedStatus = "none";
       p.roundFinished = false;
@@ -167,7 +170,7 @@ class Rooms {
     return room ? room.scores : {};
   }
 
-  // NEW: global per-round reward ordering
+  // Per-round reward ordering
   getNextPoints(roomId) {
     const room = this.rooms.get(roomId);
     if (!room) return 1;
@@ -190,8 +193,6 @@ class Rooms {
       null;
     if (!player) return null;
 
-    // If solving own cards and already roundFinished, can't solve
-    // If solving someone else's "no solution" challenge, allow even if roundFinished
     if (!isNoSolutionChallenge && player.roundFinished) return null;
 
     const pts = this.getNextPoints(roomId);
@@ -217,8 +218,6 @@ class Rooms {
     if (!player) return;
 
     player.finishedStatus = "waiting";
-    // Do NOT mark roundFinished here; they are still in this round logically,
-    // just waiting for no-solution resolution.
   }
 
   markPlayerRoundFinished(roomId, playerId) {
@@ -256,7 +255,6 @@ class Rooms {
 
     room.noSolution = { originPlayerId, expiresAt, votes, timeoutId: null };
 
-    // origin loses active cards, waits
     this.markPlayerWaiting(roomId, originPlayerId);
 
     room.noSolution.timeoutId = setTimeout(() => {
@@ -371,10 +369,12 @@ class Rooms {
     };
   }
 
+  // 👉 CHANGED: Reveal timer only controls time window – no auto points on expiry
   startRevealTimer(roomId, originPlayerId, cb) {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
+    // Prevent duplicate timers per origin player
     if (room.reveal && room.reveal.originPlayerId === originPlayerId) return;
     if (room.reveal && room.reveal.timeoutId) {
       clearTimeout(room.reveal.timeoutId);
@@ -391,33 +391,23 @@ class Rooms {
 
     room.reveal = { originPlayerId, expiresAt, timeoutId: null };
 
+    // After the reveal window ends, no one gets points automatically.
+    // The server will start a fresh round when it sees this "expired" event.
     room.reveal.timeoutId = setTimeout(() => {
-      const pts = this.getNextPoints(roomId);
-      room.scores[originPlayerId] =
-        (room.scores[originPlayerId] || 0) + pts;
-
-      const origin = room.players.get(originPlayerId);
-      if (origin) {
-        origin.solvedCount = (origin.solvedCount || 0) + 1;
-        origin.finishedStatus = "solved";
-      }
-
-      this.markPlayerRoundFinished(roomId, originPlayerId);
-
       room.reveal = null;
 
       cb({
-        awardedTo: originPlayerId,
+        awardedTo: null,
         broadcast: {
           originPlayerId,
           expired: true,
           originHand,
-          type: "reveal",
-          points: pts,
+          type: "reveal_timeout",
         },
       });
     }, duration);
 
+    // Initial callback so clients can show the countdown.
     cb({
       awardedTo: null,
       broadcast: {
