@@ -23,8 +23,7 @@ export default function App() {
   const [selectedOperator, setSelectedOperator] = useState(null);
   const [originalCards, setOriginalCards] = useState([]);
   const [history, setHistory] = useState([]);
-  // Default auto-reshuffle toggle: set to false (OFF). Change to true to default ON.
-  const [autoReshuffle, setAutoReshuffle] = useState(true);
+  const [autoReshuffle, setAutoReshuffle] = useState(true);  // Auto-reshuffle toggle
   const [userInteracted, setUserInteracted] = useState(false);
   const [soundsOn, setSoundsOn] = useState(true);
   const [gameStarted, setGameStarted] = useState(false);
@@ -74,6 +73,13 @@ export default function App() {
     }
   })();
   const currentMode = isSharedSolution ? "solution" : isSharedRiddle ? "riddle" : "casual";
+
+  // Ensure shared riddles disable auto-reshuffle by default
+  useEffect(() => {
+    if (isSharedRiddle) {
+      setAutoReshuffle(false);
+    }
+  }, [isSharedRiddle]);
   useEffect(() => {
     cardsRef.current = cards;
   }, [cards]);
