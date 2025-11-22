@@ -4,6 +4,10 @@ import { generateCardsAndTarget, operate } from "./gameLogic";
 import confetti from "canvas-confetti";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./styles.css";
+import * as socket from "./multiplayer/socket";
+import Lobby from "./components/Lobby";
+import PlayerList from "./components/PlayerList";
+import NoSolutionTimer from "./components/NoSolutionTimer";
 
 // Declare Audio objects globally.
 let undoSound;
@@ -34,6 +38,13 @@ export default function App() {
   const [replayPendingMoves, setReplayPendingMoves] = useState(null);
   const [isReplaying, setIsReplaying] = useState(false);
   const [frozenSolution, setFrozenSolution] = useState(null);
+
+  // Multiplayer state
+  const [multiplayerRoom, setMultiplayerRoom] = useState(null);
+  const [playerName, setPlayerName] = useState(null);
+  const [players, setPlayers] = useState([]);
+  const [scores, setScores] = useState({});
+  const [noSolutionTimer, setNoSolutionTimer] = useState(null);
 
   // Animation states
   const [isReshuffling, setIsReshuffling] = useState(false);
@@ -314,6 +325,47 @@ export default function App() {
     };
   }, [userInteracted, gameStarted]);
 
+  // Multiplayer socket handlers
+  useEffect(() => {
+    socket.connect();
+    socket.on("lobby_update", (data) => {
+      setPlayers(data.players || []);
+      setScores(data.scores || {});
+    });
+
+    socket.on("deal_riddle", (data) => {
+      const myId = socket.getSocketId();
+      const myHand = (data.perPlayerHands && data.perPlayerHands[myId]) || [];
+      const finalCards = myHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
+      setCards(finalCards);
+      setOriginalCards(myHand.map((c) => ({ value: c.value })));
+      setTarget(data.target);
+      setCurrentRoundTarget(data.target);
+      setGameStarted(true);
+    });
+
+    socket.on("state_sync", (state) => {
+      if (state.cards) {
+        const finalCards = state.cards.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
+        setCards(finalCards);
+      }
+      if (state.target) setTarget(state.target);
+      if (state.scores) setScores(state.scores);
+    });
+
+    socket.on("no_solution_timer", (payload) => setNoSolutionTimer(payload));
+    socket.on("score_update", (payload) => { setScores((payload && payload.scores) || {}); });
+
+    return () => {
+      try { socket.disconnect(); } catch (e) {}
+    };
+  }, []);
+
+  const handleJoined = ({ roomId, playerName }) => {
+    setMultiplayerRoom(roomId);
+    setPlayerName(playerName);
+  };
+
   const playSound = (audio) => {
     if (userInteracted && audio && soundsOn) {
       audio.currentTime = 0;
@@ -576,6 +628,15 @@ export default function App() {
             m: solutionMoves.slice(),
           }
         );
+        // If playing multiplayer, notify server that this player finished
+        if (multiplayerRoom) {
+          try {
+            const myId = socket.getSocketId();
+            socket.emitPlayMove(multiplayerRoom, myId, { type: "win" });
+          } catch (e) {
+            console.error("emit play_move failed", e);
+          }
+        }
         if (autoReshuffle && !isReplayingRef.current) {
           setTimeout(() => startNewRound(true), 2000);
         }
@@ -926,12 +987,20 @@ export default function App() {
   };
 
   if (!gameStarted) {
-    return <MainMenu />;
+    return (
+      <>
+        <MainMenu />
+        {!multiplayerRoom && <Lobby onJoined={handleJoined} />}
+        {multiplayerRoom && <PlayerList players={players} scores={scores} />}
+      </>
+    );
   }
 
   return (
     <div className="container text-center position-relative">
       <div ref={centerRef} className="screen-center-anchor d-none"></div>
+      {multiplayerRoom && <PlayerList players={players} scores={scores} />}
+      {noSolutionTimer && <NoSolutionTimer timer={noSolutionTimer} onSkip={(origin) => socket.emitSkipVote(multiplayerRoom, socket.getSocketId(), origin)} />}
 
       {/* Home button - desktop/tablet: top-left */}
       <div className="position-absolute top-0 start-0 m-2 d-none d-sm-block">
