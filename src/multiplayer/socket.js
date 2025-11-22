@@ -18,9 +18,9 @@ export function getSocketId() {
   return socket ? socket.id : null;
 }
 
-export function joinRoom(roomId, playerName) {
+export function joinRoom(roomId, playerName, roomName = null) {
   if (!socket) connect();
-  socket.emit("join_room", { roomId, playerName });
+  socket.emit("join_room", { roomId, playerName, roomName });
 }
 
 export function leaveRoom(roomId) {
@@ -51,6 +51,11 @@ export function emitSkipVote(roomId, playerId, originPlayerId) {
 export function on(event, cb) {
   if (!socket) connect();
   socket.on(event, cb);
+}
+
+export function requestRooms() {
+  if (!socket) connect();
+  socket.emit("list_rooms");
 }
 
 export default {

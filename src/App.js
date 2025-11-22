@@ -45,6 +45,7 @@ export default function App() {
   const [players, setPlayers] = useState([]);
   const [scores, setScores] = useState({});
   const [noSolutionTimer, setNoSolutionTimer] = useState(null);
+  const [showMultiplayer, setShowMultiplayer] = useState(false);
 
   // Animation states
   const [isReshuffling, setIsReshuffling] = useState(false);
@@ -364,6 +365,7 @@ export default function App() {
   const handleJoined = ({ roomId, playerName }) => {
     setMultiplayerRoom(roomId);
     setPlayerName(playerName);
+    setShowMultiplayer(false);
   };
 
   const playSound = (audio) => {
@@ -969,16 +971,18 @@ export default function App() {
             : "Use all four cards to reach the target value. Good luck!"}
         </p>
 
-        <div className="d-flex flex-column gap-3 mt-4">
+        <div className="d-flex gap-3 mt-4">
           <button
             className="btn btn-primary btn-lg"
             onClick={() => setGameStarted(true)}
           >
-            {isSharedSolution
-              ? "Watch the solution"
-              : isSharedRiddle
-              ? "Take me to the riddle"
-              : "Start"}
+            Solo
+          </button>
+          <button
+            className="btn btn-outline-primary btn-lg"
+            onClick={() => setShowMultiplayer(true)}
+          >
+            Multiplayer
           </button>
         </div>
         <div ref={centerRef} className="screen-center-anchor d-none"></div>
@@ -990,8 +994,17 @@ export default function App() {
     return (
       <>
         <MainMenu />
-        {!multiplayerRoom && <Lobby onJoined={handleJoined} />}
-        {multiplayerRoom && <PlayerList players={players} scores={scores} />}
+        {showMultiplayer && !multiplayerRoom && <Lobby onJoined={handleJoined} />}
+        {multiplayerRoom && (
+          <PlayerList
+            players={players}
+            scores={scores}
+            hostId={players && players.length > 0 ? players[0].playerId : null}
+            currentPlayerId={socket.getSocketId()}
+            roomId={multiplayerRoom}
+            onStartGame={(roomId) => socket.startGame(roomId)}
+          />
+        )}
       </>
     );
   }
@@ -999,7 +1012,16 @@ export default function App() {
   return (
     <div className="container text-center position-relative">
       <div ref={centerRef} className="screen-center-anchor d-none"></div>
-      {multiplayerRoom && <PlayerList players={players} scores={scores} />}
+      {multiplayerRoom && (
+        <PlayerList
+          players={players}
+          scores={scores}
+          hostId={players && players.length > 0 ? players[0].playerId : null}
+          currentPlayerId={socket.getSocketId()}
+          roomId={multiplayerRoom}
+          onStartGame={(roomId) => socket.startGame(roomId)}
+        />
+      )}
       {noSolutionTimer && <NoSolutionTimer timer={noSolutionTimer} onSkip={(origin) => socket.emitSkipVote(multiplayerRoom, socket.getSocketId(), origin)} />}
 
       {/* Home button - desktop/tablet: top-left */}

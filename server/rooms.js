@@ -3,13 +3,6 @@ function shuffle(array) {
     const j = Math.floor(Math.random() * (i + 1));
     [array[i], array[j]] = [array[j], array[i]];
   }
-
-  listRooms() {
-    return Array.from(this.rooms.keys()).map((roomId) => {
-      const room = this.rooms.get(roomId);
-      return { roomId, playerCount: room ? room.players.size : 0 };
-    });
-  }
   return array;
 }
 
@@ -25,16 +18,21 @@ class Rooms {
         scores: {},
         noSolution: null,
         deal: null,
+        name: null,
+        host: null,
       });
     }
     return this.rooms.get(id);
   }
 
-  addPlayer(roomId, socketId, playerName) {
+  addPlayer(roomId, socketId, playerName, roomName = null) {
     const room = this._ensureRoom(roomId);
     const playerId = socketId;
     room.players.set(socketId, { playerId, name: playerName, socketId, finished: false });
     room.scores[playerId] = room.scores[playerId] || 0;
+    // assign host and room name if first creator
+    if (!room.host) room.host = socketId;
+    if (roomName) room.name = roomName;
     return { playerId, name: playerName };
   }
 
@@ -42,11 +40,21 @@ class Rooms {
     const room = this.rooms.get(roomId);
     if (!room) return;
     room.players.delete(socketId);
+    if (room.host === socketId) {
+      const it = room.players.keys().next();
+      room.host = it.done ? null : it.value;
+    }
   }
 
   removePlayerBySocket(socketId) {
     for (const [roomId, room] of this.rooms) {
-      if (room.players.has(socketId)) room.players.delete(socketId);
+      if (room.players.has(socketId)) {
+        room.players.delete(socketId);
+        if (room.host === socketId) {
+          const it = room.players.keys().next();
+          room.host = it.done ? null : it.value;
+        }
+      }
     }
   }
 
@@ -56,9 +64,9 @@ class Rooms {
 
   getRoomPublic(roomId) {
     const room = this.rooms.get(roomId);
-    if (!room) return { players: [], scores: {} };
+    if (!room) return { players: [], scores: {}, hostId: null, roomName: null };
     const players = Array.from(room.players.values()).map((p) => ({ playerId: p.playerId, name: p.name, finished: p.finished }));
-    return { players, scores: room.scores || {} };
+    return { players, scores: room.scores || {}, hostId: room.host, roomName: room.name };
   }
 
   broadcastAllLobby(io) {
@@ -69,9 +77,7 @@ class Rooms {
 
   generateDeck() {
     const deck = [];
-    for (let v = 1; v <= 13; v++) {
-      for (let c = 0; c < 4; c++) deck.push(v);
-    }
+    for (let v = 1; v <= 13; v++) for (let c = 0; c < 4; c++) deck.push(v);
     return shuffle(deck);
   }
 
@@ -83,9 +89,7 @@ class Rooms {
     const players = Array.from(room.players.values());
     for (const p of players) {
       const hand = [];
-      for (let i = 0; i < 4; i++) {
-        hand.push({ id: `${Date.now()}-${Math.random()}`, value: deck.pop() });
-      }
+      for (let i = 0; i < 4; i++) hand.push({ id: `${Date.now()}-${Math.random()}`, value: deck.pop() });
       perPlayerHands[p.playerId] = hand;
     }
     const target = 24;
@@ -107,9 +111,9 @@ class Rooms {
     if (!room) return null;
     const player = Array.from(room.players.values()).find((p) => p.playerId === playerId) || null;
     if (!player || player.finished) return null;
-    const alreadyFinishedCount = Array.from(room.players.values()).filter((p) => p.finished).length;
+    const order = Array.from(room.players.values()).filter((p) => p.finished).length;
     const pointsByOrder = [10, 7, 4, 1];
-    const pts = pointsByOrder[alreadyFinishedCount] || 1;
+    const pts = pointsByOrder[order] || 1;
     room.scores[playerId] = (room.scores[playerId] || 0) + pts;
     if (player) player.finished = true;
     return playerId;
@@ -129,14 +133,12 @@ class Rooms {
     const expiresAt = Date.now() + duration;
     const votes = new Set();
     room.noSolution = { originPlayerId, expiresAt, votes, timeoutId: null };
-
     room.noSolution.timeoutId = setTimeout(() => {
       const awardedTo = originPlayerId;
       room.scores[originPlayerId] = (room.scores[originPlayerId] || 0) + 10;
       room.noSolution = null;
       cb({ awardedTo, broadcast: { originPlayerId, expired: true } });
     }, duration);
-
     cb({ awardedTo: null, broadcast: { originPlayerId, expiresAt } });
   }
 
@@ -164,6 +166,10 @@ class Rooms {
     const broadcast = { originPlayerId, skipped: true };
     room.noSolution = null;
     return { awardedTo, broadcast };
+  }
+
+  listRooms() {
+    return Array.from(this.rooms.entries()).map(([roomId, room]) => ({ roomId, playerCount: room ? room.players.size : 0, roomName: room ? room.name : null }));
   }
 }
 
