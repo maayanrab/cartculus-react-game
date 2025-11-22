@@ -24,7 +24,7 @@ export default function App() {
   const [originalCards, setOriginalCards] = useState([]);
   const [history, setHistory] = useState([]);
   // Default auto-reshuffle toggle: set to false (OFF). Change to true to default ON.
-  const [autoReshuffle, setAutoReshuffle] = useState(false);
+  const [autoReshuffle, setAutoReshuffle] = useState(true);
   const [userInteracted, setUserInteracted] = useState(false);
   const [soundsOn, setSoundsOn] = useState(true);
   const [gameStarted, setGameStarted] = useState(false);
@@ -846,7 +846,7 @@ export default function App() {
               ? "Watch the solution"
               : isSharedRiddle
               ? "Take me to the riddle"
-              : "Casual Mode"}
+              : "Start"}
           </button>
         </div>
         <div ref={centerRef} className="screen-center-anchor d-none"></div>
@@ -945,7 +945,7 @@ export default function App() {
           ? "Solution Replay"
           : currentMode === "riddle"
           ? "Riddle"
-          : "Casual Mode"}
+          : "A mathematical card game"}
       </h5>
 
       {gameStarted && (
