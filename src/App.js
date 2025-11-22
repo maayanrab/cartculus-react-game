@@ -461,44 +461,71 @@ export default function App() {
     });
 
     socket.on("state_sync", (state) => {
-      // For state_sync, restore the player's original hand silently (no animations)
-      // This happens after "no solution" resolves to restore original hands
-      // When a player solves, they should NOT receive state_sync (they wait without cards)
-      // The server should never send state_sync to origin players after "no solution" resolves
-      // If we're currently waiting after declaring "no solution", don't restore cards
-      if (waitingForOthersAfterWinRef.current && (!state.cards || state.cards.length === 0)) {
-        // We're waiting and got empty state_sync - stay waiting (this shouldn't happen but be safe)
+      const myId = socket.getSocketId();
+
+      // If we had a backup from a no-solution challenge and this player was already
+      // waiting before that challenge, they should remain waiting and not get a new
+      // active hand restored.
+      const backup = tempHandBackupRef.current;
+      if (
+        backup &&
+        backup.wasWaiting &&
+        state &&
+        state.cards &&
+        state.cards.length > 0
+      ) {
         return;
       }
-      
+
+      // If I'm currently in a "waiting" state (for example, I declared no-solution
+      // and should wait without cards), ignore any attempt to restore a live hand.
+      if (
+        waitingForOthersAfterWinRef.current &&
+        state &&
+        state.cards &&
+        state.cards.length > 0
+      ) {
+        return;
+      }
+
       if (state && state.cards && state.cards.length > 0) {
-        // Always restore silently without animation - state_sync is for restoring hands,
-        // not for new deals (new deals use deal_pending/deal_riddle)
-        const finalCards = state.cards.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
+        // Restore my own original hand (used after no-solution expires / skip ends,
+        // or when I solved someone else's no-solution challenge and should get my
+        // original cards back).
+        const finalCards = state.cards.map((c) => ({
+          id: c.id,
+          value: c.value,
+          isPlaceholder: false,
+          invisible: false,
+        }));
+
         setCards(finalCards);
-        // Keep the full card objects (including ids) so Reset/Undo work correctly
         setOriginalCards(state.cards || []);
+
         if (state.target) {
           setTarget(state.target);
           setCurrentRoundTarget(state.target);
         }
+
         if (state.scores) setScores(state.scores);
+
         setGameStarted(true);
+        // If we're getting a restored hand, we're actively playing again
         setWaitingForOthersAfterWin(false);
         setHasWonCurrentRound(false);
-        setHistory([]); // Clear history for fresh start
-        setSolutionMoves([]); // Clear solution moves
+        setHistory([]);
+        setSolutionMoves([]);
         setSelected([]);
         setSelectedOperator(null);
       } else {
-        if (state.target) {
+        // State without cards but with meta-data (scores/target)
+        if (state && state.target) {
           setTarget(state.target);
           setCurrentRoundTarget(state.target);
         }
-        if (state.scores) setScores(state.scores);
-        // Don't clear waiting state if we have no cards - might be waiting after "no solution"
-        if (state.cards && state.cards.length === 0) {
-          // Explicitly empty cards - this shouldn't happen but handle it
+        if (state && state.scores) setScores(state.scores);
+
+        if (state && state.cards && state.cards.length === 0) {
           setCards([]);
           setOriginalCards([]);
         }
@@ -603,11 +630,19 @@ export default function App() {
         setWaitingForOthersAfterWin(true);
         tempHandBackupRef.current = null;
       } else {
-        // Non-origin players: restore their original hands (server will send state_sync)
-        // Temporary restore from backup until state_sync arrives (which will properly restore)
-        if (tempHandBackupRef.current) {
-          setCards(tempHandBackupRef.current.cards || []);
-          setOriginalCards(tempHandBackupRef.current.original || []);
+        // Non-origin players: restore their original hands.
+        // Use the backup we saved when we first swapped to the origin's cards.
+        const backup = tempHandBackupRef.current;
+        if (backup) {
+          setCards(backup.cards || []);
+          setOriginalCards(backup.original || []);
+          // If this player was already in a waiting state before the no-solution
+          // challenge, return them to that waiting state (no active cards).
+          if (backup.wasWaiting) {
+            setCards([]);
+            setOriginalCards([]);
+            setWaitingForOthersAfterWin(true);
+          }
           tempHandBackupRef.current = null;
         }
       }
@@ -620,7 +655,13 @@ export default function App() {
     // only swap hands for players who are NOT the origin
     if (currentId && originId && currentId !== originId && Array.isArray(noSolutionTimer.originHand)) {
       // backup current hand so we can restore later (even if empty, for players who finished)
-      tempHandBackupRef.current = { cards: cards, original: originalCards };
+      if (!tempHandBackupRef.current) {
+        tempHandBackupRef.current = {
+          cards,
+          original: originalCards,
+          wasWaiting: waitingForOthersAfterWinRef.current,
+        };
+      }
       const incoming = noSolutionTimer.originHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
       setCards(incoming);
       // Preserve full card objects so Reset/Undo and id-based selection work correctly
