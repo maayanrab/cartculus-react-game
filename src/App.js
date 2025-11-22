@@ -14,7 +14,7 @@ let cardRevealSound;
 let discardHandSound;
 
 const TOTAL_CARD_SLOTS = 4;
-const MERGE_ANIMATION_DURATION = 700; // ms
+const MERGE_ANIMATION_DURATION = 300; // ms — shortened to match CSS fly animation
 
 export default function App() {
   const [cards, setCards] = useState([]);
@@ -23,7 +23,7 @@ export default function App() {
   const [selectedOperator, setSelectedOperator] = useState(null);
   const [originalCards, setOriginalCards] = useState([]);
   const [history, setHistory] = useState([]);
-  const [autoReshuffle, setAutoReshuffle] = useState(true);  // Auto-reshuffle toggle
+  const [autoReshuffle, setAutoReshuffle] = useState(true); // Auto-reshuffle toggle
   const [userInteracted, setUserInteracted] = useState(false);
   const [soundsOn, setSoundsOn] = useState(true);
   const [gameStarted, setGameStarted] = useState(false);
@@ -50,6 +50,8 @@ export default function App() {
   const isReplayingRef = useRef(isReplaying);
   const flyingCardInfoRef = useRef(flyingCardInfo);
   const mergeResolveRef = useRef(null);
+  const mergeTimeoutRef = useRef(null); // <--- new: to cancel merge finish
+  const reshuffleAbortRef = useRef(false); // <--- new: to abort reshuffle sequence
   const replayInitialCardsRef = useRef(null);
   const replayInitialTargetRef = useRef(null);
   const replaySessionIdRef = useRef(0);
@@ -73,13 +75,6 @@ export default function App() {
     }
   })();
   const currentMode = isSharedSolution ? "solution" : isSharedRiddle ? "riddle" : "casual";
-
-  // Ensure shared riddles disable auto-reshuffle by default
-  useEffect(() => {
-    if (isSharedRiddle) {
-      setAutoReshuffle(false);
-    }
-  }, [isSharedRiddle]);
   useEffect(() => {
     cardsRef.current = cards;
   }, [cards]);
@@ -207,12 +202,13 @@ export default function App() {
   };
 
   const highlightStep = async (aId, op, bId) => {
+    // Make highlights feel almost immediate
     setSelected([aId]);
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 100));
     setSelectedOperator(op);
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 100));
     setSelected([aId, bId]);
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 100));
   };
 
   const performOperationAndWait = async ([aId, bId], op) => {
@@ -332,7 +328,12 @@ export default function App() {
     presetCards = null,
     presetTarget = null
   ) => {
-    if (isReshuffling || flyingCardInfo) return;
+    // Allow starting reshuffle even if state thinks it's already reshuffling,
+    // but do not start a reshuffle in the middle of a merge visual.
+    if (flyingCardInfo) return;
+
+    // reset abort flag for this reshuffle
+    reshuffleAbortRef.current = false;
 
     if (playInitialDiscardSound) {
       playSound(discardHandSound);
@@ -373,6 +374,11 @@ export default function App() {
 
     if (currentlyVisibleCards.length > 0) {
       await sleep(700);
+      if (reshuffleAbortRef.current) {
+        setIsReshuffling(false);
+        document.body.classList.remove("scrolling-disabled");
+        return;
+      }
     }
 
     const { cards: newGeneratedCards, target: newTarget } =
@@ -415,18 +421,42 @@ export default function App() {
     );
 
     await sleep(400);
+    if (reshuffleAbortRef.current) {
+      setIsReshuffling(false);
+      setNewCardsAnimatingIn(false);
+      document.body.classList.remove("scrolling-disabled");
+      return;
+    }
     playSound(reshuffleSound);
     await sleep(
       800 +
         (newGeneratedCards.length > 0 ? (newGeneratedCards.length - 1) * 50 : 0)
     );
+    if (reshuffleAbortRef.current) {
+      setIsReshuffling(false);
+      setNewCardsAnimatingIn(false);
+      document.body.classList.remove("scrolling-disabled");
+      return;
+    }
 
     setHandCardsFlipped(true);
     await sleep(600);
+    if (reshuffleAbortRef.current) {
+      setIsReshuffling(false);
+      setNewCardsAnimatingIn(false);
+      document.body.classList.remove("scrolling-disabled");
+      return;
+    }
 
     setTargetCardFlipped(true);
     playSound(cardRevealSound);
     await sleep(600);
+    if (reshuffleAbortRef.current) {
+      setIsReshuffling(false);
+      setNewCardsAnimatingIn(false);
+      document.body.classList.remove("scrolling-disabled");
+      return;
+    }
 
     const finalCardsState = Array.from({ length: TOTAL_CARD_SLOTS }).map(
       (_, index) => {
@@ -601,8 +631,9 @@ export default function App() {
   };
 
   const performOperation = ([aId, bId], operator) => {
-    if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo)
-      return;
+    // allow operations even if isReshuffling/newCardsAnimatingIn are set in some race cases,
+    // but still disallow when a merge is already visually happening
+    if (flyingCardInfo) return;
 
     const sourceCards = isReplayingRef.current ? cardsRef.current : cards;
     const cardA_Obj = sourceCards.find((c) => c.id === aId);
@@ -683,7 +714,6 @@ export default function App() {
 
     // Use functional setState to avoid race conditions with stale closures during replay
     setCards((prev) => {
-      // If in replay mode, prefer the computed updatedCards (based on sourceCards)
       return isReplayingRef.current ? updatedCards : updatedCards;
     });
     playSound(operatorSound);
@@ -693,7 +723,7 @@ export default function App() {
       setSelectedOperator(null);
     }
 
-    // --- NEW LOGIC FOR WIN CONDITION CHECK DURING MERGE ---
+    // --- NEW LOGIC FOR WIN CONDITION CHECK DURING MERGE (unchanged) ---
     const newCardsStateAfterMerge = updatedCards.filter(
       (c) => c.id !== bId && !c.isPlaceholder && !c.invisible
     ); // Simulate the state after B is gone
@@ -706,7 +736,6 @@ export default function App() {
       newCardsStateAfterMerge.length === 1 &&
       potentialWinningCard.value === target
     ) {
-      // Trigger confetti and sound immediately for a win
       confetti();
       playSound(successSound);
       setHasWonCurrentRound(true);
@@ -730,7 +759,13 @@ export default function App() {
     }
     // --- END NEW LOGIC ---
 
-    setTimeout(() => {
+    // store timeout id so we can cancel the finishing step (undo/reset)
+    if (mergeTimeoutRef.current) {
+      clearTimeout(mergeTimeoutRef.current);
+      mergeTimeoutRef.current = null;
+    }
+    mergeTimeoutRef.current = setTimeout(() => {
+      mergeTimeoutRef.current = null;
       setFlyingCardInfo(null);
       setCards((currentCards) =>
         currentCards.map((c) =>
@@ -751,34 +786,64 @@ export default function App() {
   };
 
   const handleUndo = () => {
-    if (
-      isReshuffling ||
-      newCardsAnimatingIn ||
-      !gameStarted ||
-      flyingCardInfo ||
-      history.length === 0 ||
-      isReplaying
-    )
-      return;
+    // Allow undo even while reshuffle/entry animations are running.
+    if (!gameStarted || history.length === 0 || isReplaying) return;
+
+    // If a merge is mid-flight, cancel its finishing timeout and clear the flying visual.
+    if (mergeTimeoutRef.current) {
+      clearTimeout(mergeTimeoutRef.current);
+      mergeTimeoutRef.current = null;
+    }
+    if (mergeResolveRef.current) {
+      try {
+        mergeResolveRef.current();
+      } catch {}
+      mergeResolveRef.current = null;
+    }
+
+    // Abort any in-progress reshuffle sequence
+    reshuffleAbortRef.current = true;
+    setIsReshuffling(false);
+    setNewCardsAnimatingIn(false);
+    document.body.classList.remove("scrolling-disabled");
+
+    // Clear flying card visual immediately
+    setFlyingCardInfo(null);
+
     playSound(undoSound);
     const prev = history[history.length - 1];
     setCards(prev);
-    setHistory(history.slice(0, -1));
+    setHistory((h) => h.slice(0, -1));
     setSelected([]);
     setSelectedOperator(null);
     setSolutionMoves((prev) => (prev.length ? prev.slice(0, -1) : prev));
   };
 
   const handleReset = () => {
-    if (
-      isReshuffling ||
-      newCardsAnimatingIn ||
-      !gameStarted ||
-      flyingCardInfo ||
-      (history.length === 0 && originalCards.length === 0) ||
-      isReplaying
-    )
-      return;
+    // Allow reset while reshuffle/entry animations run.
+    if (!gameStarted || (history.length === 0 && originalCards.length === 0) || isReplaying) return;
+
+    // Cancel pending merge finish if any
+    if (mergeTimeoutRef.current) {
+      clearTimeout(mergeTimeoutRef.current);
+      mergeTimeoutRef.current = null;
+    }
+    if (mergeResolveRef.current) {
+      try {
+        mergeResolveRef.current();
+      } catch {}
+      mergeResolveRef.current = null;
+    }
+
+    // Abort any in-progress reshuffle sequence
+    reshuffleAbortRef.current = true;
+    setIsReshuffling(false);
+    setNewCardsAnimatingIn(false);
+    document.body.classList.remove("scrolling-disabled");
+
+    // Clear flying card visual immediately
+    setFlyingCardInfo(null);
+
     playSound(undoSound);
 
     const resetCardsState = Array.from({ length: TOTAL_CARD_SLOTS }).map(
@@ -959,16 +1024,13 @@ export default function App() {
       {gameStarted && (
         <>
           <div className="d-flex flex-sm-row justify-content-center align-items-center my-4 gap-3 controls-target-wrapper">
-
-            {/* Small-screen Reshuffle button placed to the LEFT of the target (height-centered) */}
             <div
               className="d-flex flex-column flex-nowrap small-screen-controls position-absolute"
               style={{ left: "calc(50% - 130px)", transform: "translateX(-50%)" }}
             >
               <button
-                className="img-button"
+                className="img-button reshuffle-btn"
                 onClick={() => startNewRound(true)}
-                style={{ transform: "scale(1.2)", transformOrigin: "center" }}
                 disabled={
                   isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying
                 }
@@ -1000,7 +1062,8 @@ export default function App() {
                   isReshuffling ||
                   newCardsAnimatingIn ||
                   !gameStarted ||
-                  history.length === 0
+                  history.length === 0 ||
+                  isReplaying
                 }
               >
                 <img src="./images/undo-button.png" alt="Undo" />
@@ -1013,7 +1076,8 @@ export default function App() {
                   isReshuffling ||
                   newCardsAnimatingIn ||
                   !gameStarted ||
-                  history.length === 0
+                  (history.length === 0 && originalCards.length === 0) ||
+                  isReplaying
                 }
               >
                 <img src="./images/reset-button.png" alt="Reset" />
