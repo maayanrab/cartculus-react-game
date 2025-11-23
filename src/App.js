@@ -702,11 +702,18 @@ export default function App() {
   };
 
   const playSound = (audio) => {
-    if (userInteracted && audio && soundsOn) {
+    // If the sound object exists and sounds are enabled, play it.
+    // We don't rely on the React `userInteracted` state here, because the first
+    // multiplayer deal can arrive before that state update is visible in this closure.
+    if (!audio || !soundsOn) return;
+    try {
       audio.currentTime = 0;
       audio.play().catch((e) => console.error("Error playing sound:", e));
+    } catch (e) {
+      console.error("Error playing sound:", e);
     }
   };
+
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
