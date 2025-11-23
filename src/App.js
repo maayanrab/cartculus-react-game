@@ -562,8 +562,20 @@ export default function App() {
       try {
         const awardedTo = payload && payload.awardedTo;
         const myId = socket.getSocketId();
+        const reason = payload && payload.reason; // NEW
+
         if (awardedTo && myId && awardedTo === myId) {
-          // I was awarded points — play celebration and wait for others
+          // If I solved someone else's no-solution challenge, I should
+          // get the points but KEEP playing with my original cards.
+          if (reason === "no_solution_challenge") {
+            try { confetti(); } catch {}
+            try { playSound(successSound); } catch {}
+            // IMPORTANT: do NOT clear cards or set Waiting-for-others here
+            return;
+          }
+
+          // All other reasons (normal win, my no-solution was accepted, etc.)
+          // mean I'm done for this round and should wait for others.
           try { confetti(); } catch {}
           try { playSound(successSound); } catch {}
           setHasWonCurrentRound(true);
@@ -576,6 +588,7 @@ export default function App() {
         console.error("handling score_update", e);
       }
     });
+
 
     socket.on("pending_status", (payload) => {
       try {

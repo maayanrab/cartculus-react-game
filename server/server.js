@@ -241,6 +241,8 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("score_update", {
         scores: rooms.getScores(roomId),
         awardedTo: awarded,
+        // NEW: distinguish a normal win vs solving someone else's no-solution
+        reason: isNoSolutionChallenge ? "no_solution_challenge" : "win",
       });
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 
@@ -248,6 +250,7 @@ io.on("connection", (socket) => {
         // Solver waits without cards; everyone else continues
       }
     }
+
 
     // if all players are now in "waiting" state, schedule next round.
     try {
@@ -308,6 +311,8 @@ io.on("connection", (socket) => {
         io.to(roomId).emit("score_update", {
           scores: rooms.getScores(roomId),
           awardedTo: result.awardedTo,
+          // NEW: points given because the no-solution timer expired
+          reason: "no_solution_timeout",
         });
 
         // After awarding due to no-solution expiry, restore other players' hands
@@ -359,6 +364,8 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("score_update", {
         scores: rooms.getScores(roomId),
         awardedTo: result.awardedTo,
+        // NEW: points given because everyone voted to skip (no-solution accepted)
+        reason: "no_solution_skip",
       });
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 
