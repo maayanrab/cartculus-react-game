@@ -98,10 +98,10 @@ export default function App() {
   const mySocketId = socket.getSocketId();
   const showingOriginHand = Boolean(
     noSolutionTimer &&
-      mySocketId &&
-      noSolutionTimer.originPlayerId &&
-      mySocketId !== noSolutionTimer.originPlayerId &&
-      Array.isArray(noSolutionTimer.originHand)
+    mySocketId &&
+    noSolutionTimer.originPlayerId &&
+    mySocketId !== noSolutionTimer.originPlayerId &&
+    Array.isArray(noSolutionTimer.originHand)
   );
   const currentMode = isSharedSolution ? "solution" : isSharedRiddle ? "riddle" : "casual";
   useEffect(() => {
@@ -440,7 +440,7 @@ export default function App() {
         setPendingLoadedCount(0);
         setPendingTotalCount((prev) => prev);
         // Ack to server that this client has loaded the pending deal
-        try { socket.emitDealLoaded(data.roomId || multiplayerRoom); } catch (e) {}
+        try { socket.emitDealLoaded(data.roomId || multiplayerRoom); } catch (e) { }
       } catch (e) {
         console.error("error handling deal_pending", e);
       }
@@ -568,16 +568,16 @@ export default function App() {
           // If I solved someone else's no-solution challenge, I should
           // get the points but KEEP playing with my original cards.
           if (reason === "no_solution_challenge") {
-            try { confetti(); } catch {}
-            try { playSound(successSound); } catch {}
+            try { confetti(); } catch { }
+            try { playSound(successSound); } catch { }
             // IMPORTANT: do NOT clear cards or set Waiting-for-others here
             return;
           }
 
           // All other reasons (normal win, my no-solution was accepted, etc.)
           // mean I'm done for this round and should wait for others.
-          try { confetti(); } catch {}
-          try { playSound(successSound); } catch {}
+          try { confetti(); } catch { }
+          try { playSound(successSound); } catch { }
           setHasWonCurrentRound(true);
           // Clear cards and show waiting message - player waits until everyone else finishes
           setCards([]);
@@ -602,7 +602,7 @@ export default function App() {
     });
 
     return () => {
-      try { socket.disconnect(); } catch (e) {}
+      try { socket.disconnect(); } catch (e) { }
     };
   }, []);
 
@@ -629,7 +629,7 @@ export default function App() {
       const currentId = socket.getSocketId();
       const originId = noSolutionTimer.originPlayerId;
       const isOrigin = currentId && originId && currentId === originId;
-      
+
       if (isOrigin) {
         // Origin player: ensure cards stay cleared and show waiting message
         // They declared "no solution" so they wait without cards until next round
@@ -692,7 +692,7 @@ export default function App() {
     setShowMultiplayer(false);
     // If currently in a room, leave it
     if (multiplayerRoom) {
-      try { socket.leaveRoom(multiplayerRoom); } catch (e) {}
+      try { socket.leaveRoom(multiplayerRoom); } catch (e) { }
       setMultiplayerRoom(null);
       setPlayers([]);
       setScores({});
@@ -710,7 +710,7 @@ export default function App() {
     setFlyingCardInfo(null);
     setCards([]);
     document.body.classList.remove("scrolling-disabled");
-    try { window.history.replaceState(null, "", window.location.pathname); } catch {}
+    try { window.history.replaceState(null, "", window.location.pathname); } catch { }
     setGameStarted(false);
   };
 
@@ -847,7 +847,7 @@ export default function App() {
     playSound(reshuffleSound);
     await sleep(
       800 +
-        (newGeneratedCards.length > 0 ? (newGeneratedCards.length - 1) * 50 : 0)
+      (newGeneratedCards.length > 0 ? (newGeneratedCards.length - 1) * 50 : 0)
     );
     if (reshuffleAbortRef.current) {
       setIsReshuffling(false);
@@ -1281,9 +1281,16 @@ export default function App() {
       newCardsStateAfterMerge.length === 1 &&
       potentialWinningCard.value === target
     ) {
-      confetti();
-      playSound(successSound);
+      // In SOLO mode, play confetti & sound locally.
+      // In MULTIPLAYER, let the server's `score_update` drive the celebration
+      // so we don't get double sounds.
+      if (!multiplayerRoom) {
+        confetti();
+        playSound(successSound);
+      }
+
       setHasWonCurrentRound(true);
+
       if (!isReplayingRef.current && aSlot !== -1 && bSlot !== -1) {
         setFrozenSolution((prev) =>
           prev || {
@@ -1302,6 +1309,7 @@ export default function App() {
         );
       }
     }
+
     // --- END NEW LOGIC ---
 
     // store timeout id so we can cancel the finishing step (undo/reset)
@@ -1342,7 +1350,7 @@ export default function App() {
     if (mergeResolveRef.current) {
       try {
         mergeResolveRef.current();
-      } catch {}
+      } catch { }
       mergeResolveRef.current = null;
     }
 
@@ -1376,7 +1384,7 @@ export default function App() {
     if (mergeResolveRef.current) {
       try {
         mergeResolveRef.current();
-      } catch {}
+      } catch { }
       mergeResolveRef.current = null;
     }
 
@@ -1449,8 +1457,8 @@ export default function App() {
           {isSharedSolution
             ? "This solution was shared by a friend."
             : isSharedRiddle
-            ? "This riddle was sent by a friend."
-            : "Use all four cards to reach the target value. Good luck!"}
+              ? "This riddle was sent by a friend."
+              : "Use all four cards to reach the target value. Good luck!"}
         </p>
 
         <div className="d-flex gap-3 mt-4">
@@ -1496,8 +1504,8 @@ export default function App() {
             {currentMode === "solution"
               ? "Solution Replay"
               : currentMode === "riddle"
-              ? "Riddle"
-              : "‏"
+                ? "Riddle"
+                : "‏"
             }
           </h5>
 
@@ -1579,7 +1587,7 @@ export default function App() {
           onClick={() => {
             // Leave multiplayer room if present, then return to main menu
             if (multiplayerRoom) {
-              try { socket.leaveRoom(multiplayerRoom); } catch (e) {}
+              try { socket.leaveRoom(multiplayerRoom); } catch (e) { }
               setMultiplayerRoom(null);
               setPlayers([]);
               setScores({});
@@ -1598,7 +1606,7 @@ export default function App() {
             setFlyingCardInfo(null);
             setCards([]);
             document.body.classList.remove("scrolling-disabled");
-            try { window.history.replaceState(null, "", window.location.pathname); } catch {}
+            try { window.history.replaceState(null, "", window.location.pathname); } catch { }
             setGameStarted(false);
           }}
         >
@@ -1613,7 +1621,7 @@ export default function App() {
           onClick={() => {
             // Leave multiplayer room if present, then return to main menu
             if (multiplayerRoom) {
-              try { socket.leaveRoom(multiplayerRoom); } catch (e) {}
+              try { socket.leaveRoom(multiplayerRoom); } catch (e) { }
               setMultiplayerRoom(null);
               setPlayers([]);
               setScores({});
@@ -1632,7 +1640,7 @@ export default function App() {
             setFlyingCardInfo(null);
             setCards([]);
             document.body.classList.remove("scrolling-disabled");
-            try { window.history.replaceState(null, "", window.location.pathname); } catch {}
+            try { window.history.replaceState(null, "", window.location.pathname); } catch { }
             setGameStarted(false);
           }}
         >
@@ -1674,10 +1682,10 @@ export default function App() {
         {currentMode === "solution"
           ? "Solution Replay"
           : currentMode === "riddle"
-          ? "Riddle"
-          : "‏"
+            ? "Riddle"
+            : "‏"
           // : "A mathematical card game"
-          }
+        }
       </h5>
 
       {gameStarted && (
@@ -1697,7 +1705,7 @@ export default function App() {
                       setCards([]);
                       setOriginalCards([]);
                       setWaitingForOthersAfterWin(true);
-                    } catch (e) {}
+                    } catch (e) { }
                   }}
                   disabled={
                     isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying || (players.find(p => p.playerId === socket.getSocketId()) || {}).finished
@@ -1854,16 +1862,14 @@ export default function App() {
                         className={`col-6 col-sm-auto d-flex justify-content-center reshuffle-card-container
                       ${shouldAnimateOut ? "card-animating-out" : ""}
                       ${shouldAnimateIn ? "card-animating-in" : ""}
-                      ${
-                          shouldAnimateIn && card.isFlipped
+                      ${shouldAnimateIn && card.isFlipped
                             ? "initial-offscreen-hidden"
                             : ""
-                        }
-                      ${
-                          isNewlyMerged
+                          }
+                      ${isNewlyMerged
                             ? "newly-merged-card-appear-container"
                             : ""
-                        }
+                          }
                     `}
                         style={{
                           ...(shouldAnimateOut ? card.dynamicOutStyle : {}),
@@ -1878,10 +1884,10 @@ export default function App() {
                           selected={selected.includes(card.id)}
                           onClick={
                             !isReshuffling &&
-                            !newCardsAnimatingIn &&
-                            !card.isPlaceholder &&
-                            !card.invisible &&
-                            (flyingCardInfo ? flyingCardInfo.id !== card.id : true)
+                              !newCardsAnimatingIn &&
+                              !card.isPlaceholder &&
+                              !card.invisible &&
+                              (flyingCardInfo ? flyingCardInfo.id !== card.id : true)
                               ? () => handleCardClick(card.id)
                               : undefined
                           }
@@ -1892,10 +1898,10 @@ export default function App() {
                             card.isPlaceholder
                               ? false
                               : newCardsAnimatingIn
-                              ? card.isFlipped
-                              : !isReshuffling && !newCardsAnimatingIn
-                              ? !handCardsFlipped
-                              : card.isFlipped
+                                ? card.isFlipped
+                                : !isReshuffling && !newCardsAnimatingIn
+                                  ? !handCardsFlipped
+                                  : card.isFlipped
                           }
                         />
                       </div>
@@ -1939,9 +1945,8 @@ export default function App() {
         ].map(({ op, src }) => (
           <button
             key={op}
-            className={`operator-button ${
-              selectedOperator === op ? "selected-operator" : ""
-            }`}
+            className={`operator-button ${selectedOperator === op ? "selected-operator" : ""
+              }`}
             onClick={() => handleOperatorSelect(op)}
             disabled={
               isReshuffling ||
