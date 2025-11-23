@@ -1504,8 +1504,9 @@ export default function App() {
             {currentMode === "solution"
               ? "Solution Replay"
               : currentMode === "riddle"
-                ? "Riddle"
-                : "‏"
+              ? "Riddle"
+              // : multiplayerRoom ? "Multiplayer"
+              : "Multiplayer Lobby"
             }
           </h5>
 
@@ -1682,9 +1683,9 @@ export default function App() {
         {currentMode === "solution"
           ? "Solution Replay"
           : currentMode === "riddle"
-            ? "Riddle"
-            : "‏"
-          // : "A mathematical card game"
+          ? "Riddle"
+          : multiplayerRoom ? "Multiplayer"
+          : "Solo"
         }
       </h5>
 
