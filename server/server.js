@@ -251,7 +251,6 @@ io.on("connection", (socket) => {
       }
     }
 
-
     // if all players are now in "waiting" state, schedule next round.
     try {
       scheduleNewRoundIfAllWaiting(roomId);
@@ -397,6 +396,33 @@ io.on("connection", (socket) => {
           e
         );
       }
+    }
+  });
+
+  // NEW: last player gives up during reveal -> end reveal immediately and reshuffle with no points
+  socket.on("give_up_reveal", ({ roomId, playerId }) => {
+    try {
+      const revealPublic = rooms.getRevealTimerPublic(roomId);
+      if (!revealPublic) return; // no active reveal
+      if (revealPublic.originPlayerId !== playerId) return; // only origin can give up
+
+      // Cancel the running reveal timer so the 30s timeout won't fire later
+      rooms.cancelReveal(roomId);
+      // Mark the origin as finished for this round
+      rooms.markPlayerRoundFinished(roomId, playerId);
+
+      // Notify clients that the reveal ended (treat like an immediate timeout)
+      io.to(roomId).emit("reveal_timer", {
+        ...revealPublic,
+        expired: true,
+      });
+
+      io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+
+      // Start a brand new round with no points given
+      startNewRoundForRoom(roomId);
+    } catch (e) {
+      console.error("error handling give_up_reveal", e);
     }
   });
 

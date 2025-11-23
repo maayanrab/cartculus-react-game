@@ -1540,11 +1540,37 @@ export default function App() {
       {noSolutionTimer && (
         <NoSolutionTimer
           timer={noSolutionTimer}
-          onSkip={(origin) => socket.emitSkipVote(multiplayerRoom, socket.getSocketId(), origin)}
+          onSkip={(originPlayerId, type) => {
+            const me = socket.getSocketId();
+            if (!multiplayerRoom || !me) return;
+
+            if (type === "reveal") {
+              // Last player's "Give up" during reveal
+              try {
+                socket.emitGiveUpReveal(multiplayerRoom, me);
+              } catch (e) {
+                console.error("emitGiveUpReveal failed", e);
+              }
+            } else {
+              // Normal no-solution Skip vote
+              try {
+                socket.emitSkipVote(multiplayerRoom, me, originPlayerId);
+              } catch (e) {
+                console.error("emitSkipVote failed", e);
+              }
+            }
+          }}
           currentPlayerId={socket.getSocketId()}
-          originName={players.find((p) => p.playerId === (noSolutionTimer && noSolutionTimer.originPlayerId))?.name}
+          originName={
+            players.find(
+              (p) =>
+                p.playerId ===
+                (noSolutionTimer && noSolutionTimer.originPlayerId)
+            )?.name
+          }
         />
       )}
+
 
       {/* Home button - desktop/tablet: top-left */}
       <div className="position-absolute top-0 start-0 m-2 d-none d-sm-block">

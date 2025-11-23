@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from "react";
 
-export default function NoSolutionTimer({ timer, onSkip, currentPlayerId, originName }) {
+export default function NoSolutionTimer({
+  timer,
+  onSkip,
+  currentPlayerId,
+  originName,
+}) {
   const [remaining, setRemaining] = useState(0);
 
   useEffect(() => {
@@ -27,6 +32,8 @@ export default function NoSolutionTimer({ timer, onSkip, currentPlayerId, origin
     Array.isArray(timer.votes) &&
     timer.votes.includes(currentPlayerId);
 
+  const labelName = originName || timer.originPlayerId;
+
   return (
     <div
       className="no-solution-timer position-absolute p-2"
@@ -41,8 +48,8 @@ export default function NoSolutionTimer({ timer, onSkip, currentPlayerId, origin
     >
       <div>
         {isReveal
-          ? `Reveal phase – using ${originName || timer.originPlayerId}'s cards`
-          : `No-solution declared by ${originName || timer.originPlayerId}`}
+          ? `Reveal phase – using ${labelName}'s cards`
+          : `No-solution declared by ${labelName}`}
       </div>
       <div>Time remaining: {remaining}s</div>
 
@@ -54,7 +61,7 @@ export default function NoSolutionTimer({ timer, onSkip, currentPlayerId, origin
             <button
               className="btn btn-sm btn-outline-danger"
               onClick={() =>
-                onSkip && onSkip(timer.originPlayerId)
+                onSkip && onSkip(timer.originPlayerId, "reveal")
               }
             >
               Give up
@@ -64,7 +71,7 @@ export default function NoSolutionTimer({ timer, onSkip, currentPlayerId, origin
             <div className="text-muted">Try to solve it!</div>
           )
         ) : (
-          // NO-SOLUTION MODE (unchanged semantics):
+          // NO-SOLUTION MODE:
           // Non-origin players can vote Skip; origin never sees Skip.
           !isOrigin &&
           (hasVoted ? (
@@ -73,7 +80,7 @@ export default function NoSolutionTimer({ timer, onSkip, currentPlayerId, origin
             <button
               className="btn btn-sm btn-outline-primary"
               onClick={() =>
-                onSkip && onSkip(timer.originPlayerId)
+                onSkip && onSkip(timer.originPlayerId, "no_solution")
               }
             >
               Skip
