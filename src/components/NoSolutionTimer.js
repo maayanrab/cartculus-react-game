@@ -15,19 +15,70 @@ export default function NoSolutionTimer({ timer, onSkip, currentPlayerId, origin
   }, [timer]);
 
   if (!timer) return null;
-  const isOrigin = currentPlayerId && currentPlayerId === timer.originPlayerId;
-  const hasVoted = Array.isArray(timer.votes) && timer.votes.includes(currentPlayerId);
+
+  const isOrigin =
+    currentPlayerId && currentPlayerId === timer.originPlayerId;
+  const isReveal = timer.type === "reveal";
+  const isNoSolution = timer.type === "no_solution" || !isReveal;
+
+  // Votes are only relevant for no-solution flow
+  const hasVoted =
+    isNoSolution &&
+    Array.isArray(timer.votes) &&
+    timer.votes.includes(currentPlayerId);
+
   return (
-    <div className="no-solution-timer position-absolute p-2" style={{ left: '50%', transform: 'translateX(-50%)', top: 16, background: 'rgba(255,255,255,0.95)', borderRadius: 6, zIndex: 2000 }}>
-      <div>{timer.type === 'reveal' ? 'Reveal' : 'No-solution'} declared by {originName || timer.originPlayerId}</div>
+    <div
+      className="no-solution-timer position-absolute p-2"
+      style={{
+        left: "50%",
+        transform: "translateX(-50%)",
+        top: 16,
+        background: "rgba(255,255,255,0.95)",
+        borderRadius: 6,
+        zIndex: 2000,
+      }}
+    >
+      <div>
+        {isReveal
+          ? `Reveal phase – using ${originName || timer.originPlayerId}'s cards`
+          : `No-solution declared by ${originName || timer.originPlayerId}`}
+      </div>
       <div>Time remaining: {remaining}s</div>
+
       <div className="mt-2">
-        {!isOrigin && (
-          hasVoted ? (
+        {isReveal ? (
+          // REVEAL MODE:
+          // Only the origin player gets a "Give up" button.
+          isOrigin ? (
+            <button
+              className="btn btn-sm btn-outline-danger"
+              onClick={() =>
+                onSkip && onSkip(timer.originPlayerId)
+              }
+            >
+              Give up
+            </button>
+          ) : (
+            // Other players: no Skip button in reveal phase
+            <div className="text-muted">Try to solve it!</div>
+          )
+        ) : (
+          // NO-SOLUTION MODE (unchanged semantics):
+          // Non-origin players can vote Skip; origin never sees Skip.
+          !isOrigin &&
+          (hasVoted ? (
             <div className="text-muted">Voted to skip</div>
           ) : (
-            <button className="btn btn-sm btn-outline-primary" onClick={() => onSkip && onSkip(timer.originPlayerId)}>Skip</button>
-          )
+            <button
+              className="btn btn-sm btn-outline-primary"
+              onClick={() =>
+                onSkip && onSkip(timer.originPlayerId)
+              }
+            >
+              Skip
+            </button>
+          ))
         )}
       </div>
     </div>
