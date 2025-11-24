@@ -1776,7 +1776,8 @@ export default function App() {
                   isReshuffling ||
                   newCardsAnimatingIn ||
                   !gameStarted ||
-                  (history.length === 0 && originalCards.length === 0) ||
+                  // (history.length === 0 && originalCards.length === 0) ||
+                  history.length === 0 ||
                   isReplaying
                 }
               >
