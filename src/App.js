@@ -1724,7 +1724,7 @@ export default function App() {
                     )
                   }
                 >
-                  <img src="./images/no-solution-button.png" alt="No solution" />
+                  <img src="./images/no-solution-button.png" alt="No Solution" title="No Solution" />
                 </button>
               ) : (
                 <button
@@ -1734,7 +1734,7 @@ export default function App() {
                     isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying
                   }
                 >
-                  <img src="./images/reshuffle-button.png" alt="Reshuffle" />
+                  <img src="./images/reshuffle-button.png" alt="Reshuffle" title="Reshuffle" />
                 </button>
               )}
             </div>
@@ -1766,7 +1766,7 @@ export default function App() {
                   isReplaying
                 }
               >
-                <img src="./images/undo-button.png" alt="Undo" />
+                <img src="./images/undo-button.png" alt="Undo" title="Undo" />
               </button>
 
               <button
@@ -1780,7 +1780,7 @@ export default function App() {
                   isReplaying
                 }
               >
-                <img src="./images/reset-button.png" alt="Reset" />
+                <img src="./images/reset-button.png" alt="Reset" title="Reset" />
               </button>
 
               <button
@@ -1804,7 +1804,7 @@ export default function App() {
                   isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying
                 }
               >
-                <img src="./images/share-button.png" alt="Share Riddle" />
+                <img src="./images/share-button.png" alt="Share Riddle" title="Share Riddle" />
               </button>
 
               <button
@@ -1835,6 +1835,7 @@ export default function App() {
                 <img
                   src="./images/share-solution-button.png"
                   alt="Share Solution"
+                  title="Share Solution"
                 />
               </button>
             </div>
@@ -1968,7 +1969,7 @@ export default function App() {
               flyingCardInfo
             }
           >
-            <img src={src} alt={op} className="operator-img" />
+            <img src={src} alt={op} className="operator-img" title={op} />
           </button>
         ))}
       </div>
