@@ -2,7 +2,15 @@ import { io } from "socket.io-client";
 
 let socket = null;
 
-export function connect(url = "http://localhost:4000") {
+// Choose server URL based on environment:
+// - In development (npm start) -> localhost:4000
+// - In production (GitHub Pages build) -> Render backend URL
+const SERVER_URL =
+  process.env.NODE_ENV === "production"
+    ? "https://cartculus-mp-server.onrender.com/"
+    : "http://localhost:4000";
+
+export function connect(url = SERVER_URL) {
   if (socket) return socket;
   socket = io(url, { autoConnect: true });
   return socket;

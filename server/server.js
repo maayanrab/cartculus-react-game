@@ -496,3 +496,7 @@ const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Socket.IO server listening on port ${PORT}`);
 });
+
+app.get("/", (req, res) => {
+  res.send("Cartculus multiplayer server is running.");
+});
