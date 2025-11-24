@@ -304,6 +304,25 @@ io.on("connection", (socket) => {
   });
 
   socket.on("declare_no_solution", ({ roomId, playerId }) => {
+// Prevent the last revealed player from starting a new no-solution
+// while their reveal window is active.
+try {
+  const revealPublic = rooms.getRevealTimerPublic
+    ? rooms.getRevealTimerPublic(roomId)
+    : null;
+  if (
+    revealPublic &&
+    revealPublic.originPlayerId === playerId &&
+    !revealPublic.expired &&
+    !revealPublic.skipped &&
+    !revealPublic.resolvedBy
+  ) {
+    return; // ignore declare_no_solution during active reveal for this player
+  }
+} catch (e) {
+  console.error("error checking reveal before declare_no_solution", e);
+}
+
     rooms.startNoSolutionTimer(roomId, playerId, (result) => {
       io.to(roomId).emit("no_solution_timer", result.broadcast);
       if (result.awardedTo) {

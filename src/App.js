@@ -1709,7 +1709,19 @@ export default function App() {
                     } catch (e) { }
                   }}
                   disabled={
-                    isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying || (players.find(p => p.playerId === socket.getSocketId()) || {}).finished
+                    isReshuffling ||
+                    newCardsAnimatingIn ||
+                    !gameStarted ||
+                    isReplaying ||
+                    (players.find(p => p.playerId === socket.getSocketId()) || {}).finished ||
+                    (
+                      noSolutionTimer &&                            // any timer active
+                      noSolutionTimer.type === "reveal" &&          // it's a reveal timer
+                      noSolutionTimer.originPlayerId === socket.getSocketId() &&
+                      !noSolutionTimer.expired &&
+                      !noSolutionTimer.skipped &&
+                      !noSolutionTimer.resolvedBy
+                    )
                   }
                 >
                   <img src="./images/no-solution-button.png" alt="No solution" />
