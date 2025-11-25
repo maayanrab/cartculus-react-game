@@ -1650,6 +1650,7 @@ export default function App() {
       </div>
 
       <div className="position-absolute top-0 end-0 m-2">
+        {!multiplayerRoom ? (
         <div className="form-check form-switch">
           <input
             className="form-check-input"
@@ -1662,6 +1663,7 @@ export default function App() {
             Auto-reshuffle
           </label>
         </div>
+        ) : null}
         <div className="form-check form-switch mt-2">
           <input
             className="form-check-input"
@@ -1783,7 +1785,8 @@ export default function App() {
               >
                 <img src="./images/reset-button.png" alt="Reset" title="Reset" />
               </button>
-
+              
+              {!multiplayerRoom ? (
               <button
                 className="img-button"
                 onClick={() => {
@@ -1807,7 +1810,9 @@ export default function App() {
               >
                 <img src="./images/share-button.png" alt="Share Riddle" title="Share Riddle" />
               </button>
+              ) : null}
 
+              {!multiplayerRoom ? (
               <button
                 className="img-button"
                 onClick={() => {
@@ -1839,6 +1844,7 @@ export default function App() {
                   title="Share Solution"
                 />
               </button>
+              ) : null}
             </div>
 
           </div>
