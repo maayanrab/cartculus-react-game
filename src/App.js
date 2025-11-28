@@ -1462,18 +1462,34 @@ export default function App() {
         </p>
 
         <div className="d-flex gap-3 mt-4">
-          <button
-            className="btn btn-primary btn-lg"
-            onClick={() => setGameStarted(true)}
-          >
-            Solo
-          </button>
-          <button
-            className="btn btn-outline-primary btn-lg"
-            onClick={() => setShowMultiplayer(true)}
-          >
-            Multiplayer
-          </button>
+          {isSharedSolution ? (
+              <button
+                className="btn btn-primary btn-lg"
+                onClick={() => setGameStarted(true)}
+              >
+                Take me to the solution
+              </button>
+          ) : isSharedRiddle ? (
+              (<button
+                className="btn btn-primary btn-lg"
+                onClick={() => setGameStarted(true)}
+              >
+                Take me to the riddle
+              </button>)
+          ) :
+            (<div><button
+                className="btn btn-primary btn-lg"
+                onClick={() => setGameStarted(true)}
+              >
+                Solo
+              </button>
+              <button
+                className="btn btn-outline-primary btn-lg"
+                onClick={() => setShowMultiplayer(true)}
+              >
+                Multiplayer
+              </button></div> )
+          }
         </div>
         <div ref={centerRef} className="screen-center-anchor d-none"></div>
       </div>
