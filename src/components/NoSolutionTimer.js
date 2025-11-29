@@ -83,7 +83,7 @@ export default function NoSolutionTimer({
                 onSkip && onSkip(timer.originPlayerId, "no_solution")
               }
             >
-              Skip
+              Vote to skip
             </button>
           ))
         )}
