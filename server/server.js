@@ -100,6 +100,57 @@ function scheduleNewRoundIfAllWaiting(roomId) {
   }, 1500);
 }
 
+/**
+ * After someone finishes, check if only one active player remains unfinished.
+ * If so, start a reveal timer for that player.
+ */
+function checkForRevealTimer(roomId) {
+  try {
+    const room = rooms.getRoom(roomId);
+    if (!room) return;
+
+    // Only check active players (not mid-round joiners)
+    const unfinished = Array.from(room.players.values()).filter(
+      (p) => p.isActiveInRound && !p.roundFinished
+    );
+
+    if (unfinished.length === 1) {
+      const remainingId = unfinished[0].playerId;
+
+      // When reveal timer expires with no solver, start new round with no points
+      rooms.startRevealTimer(roomId, remainingId, (result) => {
+        io.to(roomId).emit("reveal_timer", result.broadcast);
+        if (result.awardedTo) {
+          io.to(roomId).emit("score_update", {
+            scores: rooms.getScores(roomId),
+            awardedTo: result.awardedTo,
+          });
+        }
+        io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+
+        // If the reveal window expired and no one solved, deal a new round (no points).
+        if (!result.awardedTo && result.broadcast && result.broadcast.expired) {
+          try {
+            // FIX: mark last player as finished when reveal times out
+            rooms.markPlayerRoundFinished(roomId, result.broadcast.originPlayerId);
+
+            // Now everyone should be in "waiting", so the auto-next-round
+            // logic based on waiting-state will also be consistent with logs.
+            startNewRoundForRoom(roomId);
+          } catch (e) {
+            console.error(
+              "error auto-starting next round after reveal timeout",
+              e
+            );
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.error("error checking for reveal timer", e);
+  }
+}
+
 io.on("connection", (socket) => {
   console.log("socket connected:", socket.id);
 
@@ -266,48 +317,7 @@ io.on("connection", (socket) => {
     }
 
     // After someone finishes, if only one player remains with a live hand, start reveal timer
-    try {
-      const roomAfter = rooms.getRoom(roomId);
-      if (roomAfter) {
-        const unfinished = Array.from(roomAfter.players.values()).filter(
-          (p) => !p.roundFinished
-        );
-        if (unfinished.length === 1) {
-          const remainingId = unfinished[0].playerId;
-
-          // When reveal timer expires with no solver, start new round with no points
-          rooms.startRevealTimer(roomId, remainingId, (result) => {
-            io.to(roomId).emit("reveal_timer", result.broadcast);
-            if (result.awardedTo) {
-              io.to(roomId).emit("score_update", {
-                scores: rooms.getScores(roomId),
-                awardedTo: result.awardedTo,
-              });
-            }
-            io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-
-            // If the reveal window expired and no one solved, deal a new round (no points).
-            if (!result.awardedTo && result.broadcast && result.broadcast.expired) {
-              try {
-                // FIX: mark last player as finished when reveal times out
-                rooms.markPlayerRoundFinished(roomId, result.broadcast.originPlayerId);
-
-                // Now everyone should be in "waiting", so the auto-next-round
-                // logic based on waiting-state will also be consistent with logs.
-                startNewRoundForRoom(roomId);
-              } catch (e) {
-                console.error(
-                  "error auto-starting next round after reveal timeout",
-                  e
-                );
-              }
-            }
-          });
-        }
-      }
-    } catch (e) {
-      console.error("error checking for reveal timer", e);
-    }
+    checkForRevealTimer(roomId);
   });
 
   socket.on("declare_no_solution", ({ roomId, playerId }) => {
@@ -370,6 +380,9 @@ try {
           e
         );
       }
+
+      // Check if only one player remains unfinished -> start reveal timer
+      checkForRevealTimer(roomId);
     });
 
     io.to(roomId).emit(
@@ -427,6 +440,9 @@ try {
             e
           );
         }
+
+        // Check if only one player remains unfinished -> start reveal timer
+        checkForRevealTimer(roomId);
       }
     } else if (isReveal) {
       const done = rooms.registerRevealSkipVote(roomId, playerId, originPlayerId);

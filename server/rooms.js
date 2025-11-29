@@ -42,6 +42,7 @@ class Rooms {
       finishedStatus: gameInProgress ? "waiting" : "none",
       roundFinished: gameInProgress,
       solvedCount: 0,
+      isActiveInRound: !gameInProgress, // Active only if no game in progress
     });
 
     room.scores[playerId] = room.scores[playerId] || 0;
@@ -92,7 +93,7 @@ class Rooms {
   getRoomPublic(roomId) {
     const room = this.rooms.get(roomId);
     if (!room)
-      return { players: [], scores: {}, hostId: null, roomName: null };
+      return { players: [], scores: {}, hostId: null, roomName: null, finishedCount: 0, activeCount: 0 };
 
     const players = Array.from(room.players.values()).map((p) => ({
       playerId: p.playerId,
@@ -100,11 +101,18 @@ class Rooms {
       finished: p.finishedStatus !== "none",
     }));
 
+    // Count active players (those who got cards this round)
+    const activePlayers = Array.from(room.players.values()).filter(p => p.isActiveInRound);
+    const activeCount = activePlayers.length;
+    const finishedCount = activePlayers.filter(p => p.roundFinished).length;
+
     return {
       players,
       scores: room.scores || {},
       hostId: room.host,
       roomName: room.name,
+      finishedCount,
+      activeCount,
     };
   }
 
@@ -130,6 +138,7 @@ class Rooms {
       p.finishedStatus = "none";
       p.roundFinished = false;
       p.solvedCount = 0;
+      p.isActiveInRound = true; // All players become active at round start
     }
 
     const deck = this.generateDeck();
@@ -243,15 +252,16 @@ class Rooms {
   }
 
   // NEW: helper used by the server to know when to deal a new round.
-  // Returns true only if there is at least one player && every player is in "waiting" state.
+  // Returns true only if there is at least one active player && every ACTIVE player is in "waiting" state.
+  // Mid-round joiners (isActiveInRound=false) are ignored.
   areAllPlayersWaiting(roomId) {
     const room = this.rooms.get(roomId);
     if (!room) return false;
 
-    const players = Array.from(room.players.values());
-    if (players.length === 0) return false;
+    const activePlayers = Array.from(room.players.values()).filter(p => p.isActiveInRound);
+    if (activePlayers.length === 0) return false;
 
-    return players.every((p) => p.finishedStatus === "waiting");
+    return activePlayers.every((p) => p.finishedStatus === "waiting");
   }
 
   startNoSolutionTimer(roomId, originPlayerId, cb) {

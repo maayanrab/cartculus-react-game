@@ -45,6 +45,8 @@ export default function App() {
   const [players, setPlayers] = useState([]);
   const [hostId, setHostId] = useState(null);
   const [scores, setScores] = useState({});
+  const [finishedCount, setFinishedCount] = useState(0);
+  const [activeCount, setActiveCount] = useState(0);
   const [noSolutionTimer, setNoSolutionTimer] = useState(null);
   const [showMultiplayer, setShowMultiplayer] = useState(false);
   const [waitingForOthers, setWaitingForOthers] = useState(false);
@@ -76,6 +78,7 @@ export default function App() {
   const pendingDealRef = useRef(null);
   const pendingRiddleRef = useRef(null);
   const waitingForOthersAfterWinRef = useRef(waitingForOthersAfterWin);
+  const timerClearTimeoutRef = useRef(null); // Track timeout for clearing timer
   const isSharedRiddle = (() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -372,6 +375,8 @@ export default function App() {
       setPlayers(data.players || []);
       setScores(data.scores || {});
       setHostId(data.hostId || null);
+      setFinishedCount(data.finishedCount || 0);
+      setActiveCount(data.activeCount || 0);
     });
 
     // helper: process an incoming reveal (deal_riddle)
@@ -451,10 +456,6 @@ export default function App() {
       processDealPending(data);
     });
 
-    socket.on("reveal_timer", (payload) => {
-      setNoSolutionTimer(payload);
-    });
-
     socket.on("state_sync", (state) => {
       const myId = socket.getSocketId();
 
@@ -529,11 +530,32 @@ export default function App() {
 
     // no_solution updates handled below (includes restore logic)
     // When receiving a no-solution/reveal update, set the timer
-    socket.on("reveal_timer", (payload) => setNoSolutionTimer(payload));
+    socket.on("reveal_timer", (payload) => {
+      // Cancel any pending timeout that would clear the timer
+      if (timerClearTimeoutRef.current) {
+        clearTimeout(timerClearTimeoutRef.current);
+        timerClearTimeoutRef.current = null;
+      }
+      setNoSolutionTimer(payload);
+      
+      // If this reveal timer is finished (expired/skipped), clear it after delay
+      if (payload && (payload.expired || payload.skipped)) {
+        timerClearTimeoutRef.current = setTimeout(() => {
+          setNoSolutionTimer(null);
+          timerClearTimeoutRef.current = null;
+        }, 1200);
+      }
+    });
 
     // Ensure that when the no-solution is resolved (skipped/expired/resolvedBy)
     // we handle restoration. The server will send state_sync to non-origin players.
     socket.on("no_solution_timer", (payload) => {
+      // Cancel any pending timeout that would clear the timer
+      if (timerClearTimeoutRef.current) {
+        clearTimeout(timerClearTimeoutRef.current);
+        timerClearTimeoutRef.current = null;
+      }
+      
       setNoSolutionTimer(payload);
       try {
         if (!payload) return;
@@ -560,7 +582,10 @@ export default function App() {
           }
           // Non-origin players will get state_sync from server to restore their original hands
           // Clear timer shortly after to allow UX to show final state
-          setTimeout(() => setNoSolutionTimer(null), 1200);
+          timerClearTimeoutRef.current = setTimeout(() => {
+            setNoSolutionTimer(null);
+            timerClearTimeoutRef.current = null;
+          }, 1200);
         }
       } catch (e) {
         console.error('error handling no_solution_timer restore', e);
@@ -1710,6 +1735,12 @@ export default function App() {
 
       {gameStarted && (
         <>
+          {/* Show finished player count in multiplayer */}
+          {multiplayerRoom && activeCount > 0 && (
+            <div className="text-center mt-3 mb-2">
+              <span className="badge bg-secondary">Finished players: {finishedCount}/{activeCount}</span>
+            </div>
+          )}
           <div className="d-flex flex-sm-row justify-content-center align-items-center my-4 gap-3 controls-target-wrapper">
             <div
               className="d-flex flex-column flex-nowrap small-screen-controls position-absolute"
