@@ -269,6 +269,15 @@ io.on("connection", (socket) => {
           });
 
           // Solver is now marked as finished by playerFinished(), no need to restore their hand
+        } else if (room.noSolution.originPlayerId === playerId) {
+          // Origin player found a solution after declaring no-solution
+          // Cancel the no-solution timer and notify all players
+          rooms.cancelNoSolution(roomId);
+          io.to(roomId).emit("no_solution_timer", {
+            originPlayerId: playerId,
+            skipped: false,
+            resolvedBy: playerId,
+          });
         }
       }
 
@@ -279,6 +288,15 @@ io.on("connection", (socket) => {
           rooms.markPlayerRoundFinished(roomId, originId);
           io.to(roomId).emit("reveal_timer", {
             originPlayerId: originId,
+            skipped: false,
+            resolvedBy: playerId,
+          });
+        } else if (room.reveal.originPlayerId === playerId) {
+          // Origin player solved their own cards during reveal timer
+          // Cancel the reveal timer and notify all players
+          rooms.cancelReveal(roomId);
+          io.to(roomId).emit("reveal_timer", {
+            originPlayerId: playerId,
             skipped: false,
             resolvedBy: playerId,
           });
