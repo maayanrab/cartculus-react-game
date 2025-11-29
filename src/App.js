@@ -1565,9 +1565,7 @@ export default function App() {
                   setWaitingForOthers(false);
                   setNoSolutionTimer(null);
                   setGameStarted(true);
-                  // Always start a fresh round when entering solo mode
-                  // Use setTimeout to ensure state updates have applied
-                  setTimeout(() => startNewRound(false), 0);
+                  // useEffect will handle calling startNewRound when gameStarted becomes true
                 }}
               >
                 Solo
