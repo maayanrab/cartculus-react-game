@@ -654,6 +654,8 @@ export default function App() {
         if (currentId) {
           setCards(tempHandBackupRef.current.cards || []);
           setOriginalCards(tempHandBackupRef.current.original || []);
+          // Restore the player's undo history so they can continue where they left off
+          setHistory(tempHandBackupRef.current.history || []);
         }
         tempHandBackupRef.current = null;
       }
@@ -679,6 +681,8 @@ export default function App() {
         if (backup) {
           setCards(backup.cards || []);
           setOriginalCards(backup.original || []);
+          // Restore the player's undo history so they can continue where they left off
+          setHistory(backup.history || []);
           // If this player was already in a waiting state before the no-solution
           // challenge, return them to that waiting state (no active cards).
           if (backup.wasWaiting) {
@@ -703,6 +707,7 @@ export default function App() {
           cards,
           original: originalCards,
           wasWaiting: waitingForOthersAfterWinRef.current,
+          history: history, // Save the player's undo history
         };
       }
       const incoming = noSolutionTimer.originHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
@@ -712,6 +717,8 @@ export default function App() {
       setGameStarted(true);
       // Clear waiting state so player can see and interact with the origin's cards
       setWaitingForOthersAfterWin(false);
+      // Clear history/undo stack so players can't undo and modify the origin's cards
+      setHistory([]);
     }
   }, [noSolutionTimer]);
 
