@@ -27,6 +27,13 @@ function startNewRoundForRoom(roomId) {
     clearTimeout(room.autoNextRoundTimeout);
     room.autoNextRoundTimeout = null;
   }
+  
+  // Cancel any active timers (no-solution or reveal)
+  rooms.cancelNoSolution(roomId);
+  rooms.cancelReveal(roomId);
+  
+  // Clear timer UI for all clients
+  io.to(roomId).emit("no_solution_timer", null);
 
   const deal = rooms.startGame(roomId);
   const r = rooms.getRoom(roomId);
@@ -430,8 +437,6 @@ try {
           ...result.broadcast,
           skipComplete: true, // Flag to indicate skip voting finished but timer continues
         });
-
-        io.to(roomId).emit("no_solution_timer", result.broadcast);
 
         // after skip-resolution, check if everyone is waiting
         try {

@@ -456,6 +456,9 @@ export default function App() {
         setWaitingForOthersAfterWin(false);
         setPendingLoadedCount(0);
         setPendingTotalCount((prev) => prev);
+        // Clear any leftover timer state from previous round
+        setNoSolutionTimer(null);
+        tempHandBackupRef.current = null;
         // Ack to server that this client has loaded the pending deal
         try { socket.emitDealLoaded(data.roomId || multiplayerRoom); } catch (e) { }
       } catch (e) {
