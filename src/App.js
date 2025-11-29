@@ -79,6 +79,9 @@ export default function App() {
   const pendingRiddleRef = useRef(null);
   const waitingForOthersAfterWinRef = useRef(waitingForOthersAfterWin);
   const timerClearTimeoutRef = useRef(null); // Track timeout for clearing timer
+  const selectedRef = useRef(selected);
+  const selectedOperatorRef = useRef(selectedOperator);
+  const historyRef = useRef(history);
   const isSharedRiddle = (() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -113,6 +116,15 @@ export default function App() {
   useEffect(() => {
     isReplayingRef.current = isReplaying;
   }, [isReplaying]);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+  useEffect(() => {
+    selectedOperatorRef.current = selectedOperator;
+  }, [selectedOperator]);
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
   useEffect(() => {
     waitingForOthersAfterWinRef.current = waitingForOthersAfterWin;
     // If we've just cleared the waiting state, process any pending queued deals
@@ -656,6 +668,9 @@ export default function App() {
           setOriginalCards(tempHandBackupRef.current.original || []);
           // Restore the player's undo history so they can continue where they left off
           setHistory(tempHandBackupRef.current.history || []);
+          // Clear selection when returning to own cards
+          setSelected([]);
+          setSelectedOperator(null);
         }
         tempHandBackupRef.current = null;
       }
@@ -683,6 +698,9 @@ export default function App() {
           setOriginalCards(backup.original || []);
           // Restore the player's undo history so they can continue where they left off
           setHistory(backup.history || []);
+          // Clear selection when returning to own cards
+          setSelected([]);
+          setSelectedOperator(null);
           // If this player was already in a waiting state before the no-solution
           // challenge, return them to that waiting state (no active cards).
           if (backup.wasWaiting) {
@@ -707,7 +725,7 @@ export default function App() {
           cards,
           original: originalCards,
           wasWaiting: waitingForOthersAfterWinRef.current,
-          history: history, // Save the player's undo history
+          history: historyRef.current, // Save the player's undo history
         };
       }
       const incoming = noSolutionTimer.originHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
@@ -719,6 +737,9 @@ export default function App() {
       setWaitingForOthersAfterWin(false);
       // Clear history/undo stack so players can't undo and modify the origin's cards
       setHistory([]);
+      // Clear selection state so previous card/operator selections don't interfere
+      setSelected([]);
+      setSelectedOperator(null);
     }
   }, [noSolutionTimer]);
 
