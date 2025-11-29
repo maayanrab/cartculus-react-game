@@ -53,6 +53,10 @@ export default function App() {
   const [pendingLoadedCount, setPendingLoadedCount] = useState(0);
   const [pendingTotalCount, setPendingTotalCount] = useState(0);
   const [waitingForOthersAfterWin, setWaitingForOthersAfterWin] = useState(false);
+  const [viewingReveal, setViewingReveal] = useState(false);
+  const viewingRevealRef = useRef(false);
+  const revealLockRef = useRef(false);
+  const clearCardsIfAllowedRef = useRef(() => {});
 
   // Animation states
   const [isReshuffling, setIsReshuffling] = useState(false);
@@ -66,6 +70,7 @@ export default function App() {
   const cardRefs = useRef({});
   const centerRef = useRef(null);
   const cardsRef = useRef(cards);
+  const originalCardsRef = useRef(originalCards);
   const isReplayingRef = useRef(isReplaying);
   const flyingCardInfoRef = useRef(flyingCardInfo);
   const mergeResolveRef = useRef(null);
@@ -79,6 +84,10 @@ export default function App() {
   const pendingRiddleRef = useRef(null);
   const waitingForOthersAfterWinRef = useRef(waitingForOthersAfterWin);
   const timerClearTimeoutRef = useRef(null); // Track timeout for clearing timer
+  const noSolutionTimerRef = useRef(noSolutionTimer); // Track latest timer in closures
+  const lastRevealHandRef = useRef(null); // Keep latest revealed origin hand for safety rehydrate
+  const lastRevealOriginRef = useRef(null); // Track origin playerId for reveal HUD
+    const lastRevealExpiresAtRef = useRef(null); // Track reveal expiry for countdown HUD
   const selectedRef = useRef(selected);
   const selectedOperatorRef = useRef(selectedOperator);
   const historyRef = useRef(history);
@@ -109,10 +118,32 @@ export default function App() {
     mySocketId !== noSolutionTimer.originPlayerId &&
     Array.isArray(noSolutionTimer.originHand)
   );
+  // Reveal-aware flag to keep the "Player's cards" frame visible during reveal
+  const showingRevealHand = Boolean(
+    viewingRevealRef.current &&
+    mySocketId &&
+    (
+      (
+        noSolutionTimer &&
+        noSolutionTimer.originPlayerId &&
+        mySocketId !== noSolutionTimer.originPlayerId &&
+        Array.isArray(noSolutionTimer.originHand) &&
+        noSolutionTimer.originHand.length > 0
+      ) || (
+        lastRevealOriginRef.current &&
+        mySocketId !== lastRevealOriginRef.current &&
+        Array.isArray(lastRevealHandRef.current) &&
+        lastRevealHandRef.current.length > 0
+      )
+    )
+  );
   const currentMode = isSharedSolution ? "solution" : isSharedRiddle ? "riddle" : "casual";
   useEffect(() => {
     cardsRef.current = cards;
   }, [cards]);
+  useEffect(() => {
+    originalCardsRef.current = originalCards;
+  }, [originalCards]);
   useEffect(() => {
     isReplayingRef.current = isReplaying;
   }, [isReplaying]);
@@ -147,6 +178,64 @@ export default function App() {
       }
     }
   }, [waitingForOthersAfterWin]);
+  useEffect(() => {
+    viewingRevealRef.current = viewingReveal;
+  }, [viewingReveal]);
+  useEffect(() => {
+    noSolutionTimerRef.current = noSolutionTimer;
+  }, [noSolutionTimer]);
+
+  // While reveal is active, never show "waiting" UI that could hide cards
+  useEffect(() => {
+    if (viewingRevealRef.current && waitingForOthersAfterWin) {
+      console.log("[CLIENT] reveal guard: forcing not-waiting during active reveal");
+      setWaitingForOthersAfterWin(false);
+    }
+  }, [waitingForOthersAfterWin, viewingReveal]);
+
+  // Safety: while viewing reveal, ensure cards remain visible. Use cached originHand if timer cleared.
+  useEffect(() => {
+    try {
+      if (!viewingRevealRef.current) return;
+      const timer = noSolutionTimer;
+      const originHand = (timer && timer.type === "reveal" && !timer.expired && !timer.skipped && Array.isArray(timer.originHand) && timer.originHand.length > 0)
+        ? timer.originHand
+        : (Array.isArray(lastRevealHandRef.current) && lastRevealHandRef.current.length > 0 ? lastRevealHandRef.current : null);
+      if (!originHand) return;
+
+      const visibleCount = (cardsRef.current || []).filter(c => !c.invisible && !c.isPlaceholder).length;
+      const shouldRehydrate = (!cardsRef.current || cardsRef.current.length === 0 || visibleCount === 0);
+      if (!shouldRehydrate) return;
+      const incoming = originHand.map((c) => ({
+        id: c.id,
+        value: c.value,
+        isPlaceholder: false,
+        invisible: false,
+      }));
+      console.log("[CLIENT] reveal safety rehydrate", { count: incoming.length });
+      setCards(incoming);
+      setOriginalCards(originHand);
+      setWaitingForOthersAfterWin(false);
+    } catch (e) {
+      // ignore
+    }
+  }, [viewingReveal, noSolutionTimer, cards]);
+
+  // Detect any card disappearance during reveal to help diagnose stray clears
+  useEffect(() => {
+    if (!viewingRevealRef.current) return;
+    const visibleCount = (cardsRef.current || []).filter(c => !c.invisible && !c.isPlaceholder).length;
+    if (!cardsRef.current || cardsRef.current.length === 0 || visibleCount === 0) {
+      console.warn("[CLIENT] reveal guard: cards hidden/empty during reveal", { len: (cardsRef.current || []).length, visibleCount });
+    }
+  }, [cards, viewingReveal]);
+
+  // Centralized cards clear function guarded by reveal/viewing flags
+  clearCardsIfAllowedRef.current = () => {
+    if (revealLockRef.current || viewingRevealRef.current) return;
+    setCards([]);
+    setOriginalCards([]);
+  };
   useEffect(() => {
     flyingCardInfoRef.current = flyingCardInfo;
   }, [flyingCardInfo]);
@@ -437,6 +526,15 @@ export default function App() {
     // helper: process a pending deal
     const processDealPending = (data) => {
       try {
+        // New round starting: clear any lingering reveal state/UI
+        setViewingReveal(false);
+        viewingRevealRef.current = false;
+        revealLockRef.current = false;
+        lastRevealHandRef.current = null;
+        lastRevealOriginRef.current = null;
+        lastRevealExpiresAtRef.current = null;
+        if (timerClearTimeoutRef.current) { try { clearTimeout(timerClearTimeoutRef.current); } catch {} timerClearTimeoutRef.current = null; }
+        setNoSolutionTimer(null);
         const myHand = data.hand || [];
         // Load cards into state but keep them face-down (handCardsFlipped false, targetCardFlipped false)
         const finalCards = myHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
@@ -472,6 +570,13 @@ export default function App() {
     });
 
     socket.on("state_sync", (state) => {
+      console.log("[CLIENT] state_sync", {
+        hasCards: state && Array.isArray(state.cards) ? state.cards.length : null,
+        target: state && state.target,
+        scores: state && state.scores,
+        viewingReveal: viewingRevealRef.current,
+        revealLock: revealLockRef.current,
+      });
       const myId = socket.getSocketId();
 
       // If we had a backup from a no-solution challenge and this player was already
@@ -489,6 +594,17 @@ export default function App() {
       }
 
       if (state && state.cards && state.cards.length > 0) {
+        // If we receive a full hand for the new round, clear any lingering reveal
+        if (viewingRevealRef.current || revealLockRef.current) {
+          console.log("[CLIENT] state_sync: clearing lingering reveal for new round");
+          setViewingReveal(false);
+          viewingRevealRef.current = false;
+          revealLockRef.current = false;
+          lastRevealHandRef.current = null;
+          lastRevealOriginRef.current = null;
+          lastRevealExpiresAtRef.current = null;
+          setNoSolutionTimer(null);
+        }
         // Restore my own original hand (used after no-solution expires / skip ends,
         // or when I solved someone else's no-solution challenge and should get my
         // original cards back).
@@ -526,6 +642,10 @@ export default function App() {
         if (state && state.scores) setScores(state.scores);
 
         if (state && state.cards && state.cards.length === 0) {
+          console.log("[CLIENT] state_sync empty cards", { viewingReveal: viewingRevealRef.current, revealLock: revealLockRef.current });
+          if (revealLockRef.current) {
+            return;
+          }
           setCards([]);
           setOriginalCards([]);
         }
@@ -535,6 +655,7 @@ export default function App() {
     // no_solution updates handled below (includes restore logic)
     // When receiving a no-solution/reveal update, set the timer
     socket.on("reveal_timer", (payload) => {
+      console.log("[CLIENT] reveal_timer", payload);
       // Cancel any pending timeout that would clear the timer
       if (timerClearTimeoutRef.current) {
         clearTimeout(timerClearTimeoutRef.current);
@@ -542,18 +663,78 @@ export default function App() {
       }
       setNoSolutionTimer(payload);
       
-      // If this reveal timer is finished (expired/skipped), clear it after delay
-      if (payload && (payload.expired || payload.skipped)) {
-        timerClearTimeoutRef.current = setTimeout(() => {
-          setNoSolutionTimer(null);
-          timerClearTimeoutRef.current = null;
-        }, 1200);
+      try {
+        const myId = socket.getSocketId();
+        const originId = payload && payload.originPlayerId;
+        const isOrigin = myId && originId && myId === originId;
+        
+        // Track reveal viewing state for finished players to prevent premature hiding
+        if (payload && payload.type === "reveal" && !payload.expired && !payload.skipped) {
+          setViewingReveal(true);
+          revealLockRef.current = true;
+          if (Array.isArray(payload.originHand) && payload.originHand.length > 0) {
+            lastRevealHandRef.current = payload.originHand;
+          }
+          if (payload && payload.originPlayerId) {
+            lastRevealOriginRef.current = payload.originPlayerId;
+                if (payload && payload.expiresAt) {
+                  lastRevealExpiresAtRef.current = payload.expiresAt;
+                }
+          }
+          
+          // Non-origin players should immediately see the origin's revealed cards,
+          // even if they were in a "waiting" state after finishing earlier.
+          if (!isOrigin && Array.isArray(payload.originHand) && payload.originHand.length > 0) {
+            // Backup current state if not already backed up
+            if (!tempHandBackupRef.current) {
+              tempHandBackupRef.current = {
+                cards: cardsRef.current,
+                original: originalCardsRef.current,
+                wasWaiting: waitingForOthersAfterWinRef.current,
+                history: historyRef.current,
+              };
+            }
+            const incoming = payload.originHand.map((c) => ({ 
+              id: c.id, 
+              value: c.value, 
+              isPlaceholder: false, 
+              invisible: false 
+            }));
+            setCards(incoming);
+            setOriginalCards(payload.originHand);
+            setGameStarted(true);
+            // Clear waiting state so revealed cards are visible
+            setWaitingForOthersAfterWin(false);
+            setHistory([]);
+            setSelected([]);
+            setSelectedOperator(null);
+            console.log("[CLIENT] reveal swap to origin hand", { cardsCount: incoming.length });
+          }
+        }
+        
+        // If this reveal timer is finished (expired/skipped), clear it after delay
+        if (payload && (payload.expired || payload.skipped)) {
+          setViewingReveal(false);
+          revealLockRef.current = false;
+          timerClearTimeoutRef.current = setTimeout(() => {
+            const current = noSolutionTimerRef.current;
+            if (current && current.type === "reveal" && !current.expired && !current.skipped) {
+              // A new reveal is active; do not clear the timer UI
+              return;
+            }
+            setNoSolutionTimer(null);
+            timerClearTimeoutRef.current = null;
+          }, 1200);
+        }
+      } catch (e) {
+        console.error("error handling reveal_timer", e);
       }
     });
 
     // Ensure that when the no-solution is resolved (skipped/expired/resolvedBy)
     // we handle restoration. The server will send state_sync to non-origin players.
     socket.on("no_solution_timer", (payload) => {
+      console.log("[CLIENT] no_solution_timer", payload);
       // Cancel any pending timeout that would clear the timer
       if (timerClearTimeoutRef.current) {
         clearTimeout(timerClearTimeoutRef.current);
@@ -569,9 +750,9 @@ export default function App() {
         
         // If this is the START of a no-solution timer and I'm the origin
         if (isOrigin && !finished && !payload.skipComplete) {
-          // Clear my cards and wait for others
-          setCards([]);
-          setOriginalCards([]);
+          // Clear my cards and wait for others (guarded)
+          console.log("[CLIENT] origin start no-solution; clear if allowed", { viewingReveal: viewingRevealRef.current, revealLock: revealLockRef.current });
+          clearCardsIfAllowedRef.current();
           setWaitingForOthersAfterWin(true);
           tempHandBackupRef.current = null;
         }
@@ -579,14 +760,21 @@ export default function App() {
         if (finished) {
           // Origin player waits without cards - server won't send state_sync to them
           if (isOrigin) {
-            setCards([]);
-            setOriginalCards([]);
-            setWaitingForOthersAfterWin(true);
+            console.log("[CLIENT] origin finished no-solution; clear if allowed", { viewingReveal: viewingRevealRef.current, revealLock: revealLockRef.current });
+            clearCardsIfAllowedRef.current();
+            if (!viewingRevealRef.current) {
+              setWaitingForOthersAfterWin(true);
+            }
             tempHandBackupRef.current = null;
           }
           // Non-origin players will get state_sync from server to restore their original hands
           // Clear timer shortly after to allow UX to show final state
           timerClearTimeoutRef.current = setTimeout(() => {
+            const current = noSolutionTimerRef.current;
+            if (current && current.type === "reveal" && !current.expired && !current.skipped) {
+              // A reveal is active; do not clear timer state/UI
+              return;
+            }
             setNoSolutionTimer(null);
             timerClearTimeoutRef.current = null;
           }, 1200);
@@ -596,6 +784,7 @@ export default function App() {
       }
     });
     socket.on("score_update", (payload) => {
+      console.log("[CLIENT] score_update", payload);
       const scoresPayload = (payload && payload.scores) || {};
       setScores(scoresPayload);
       try {
@@ -613,15 +802,48 @@ export default function App() {
             return;
           }
 
+          // If this was a timeout/skip award, avoid clearing cards immediately;
+          // rely on reveal/no-solution handlers to manage visibility.
+          const isOwnWin = reason === "win";
+          const timer = noSolutionTimer;
+          const isWatchingOthersTimerNow = !!(
+            timer &&
+            timer.originPlayerId &&
+            myId !== timer.originPlayerId &&
+            (timer.type === "reveal" || timer.type === "no_solution")
+          );
+
           // All other reasons (normal win, my no-solution was accepted, etc.)
           // mean I'm done for this round and should wait for others.
           try { confetti(); } catch { }
           try { playSound(successSound); } catch { }
           setHasWonCurrentRound(true);
-          // Clear cards and show waiting message - player waits until everyone else finishes
-          setCards([]);
-          setOriginalCards([]);
-          setWaitingForOthersAfterWin(true);
+          if (isOwnWin && !isWatchingOthersTimerNow) {
+            // To avoid race with reveal_timer arriving slightly later, defer
+            // the transition to waiting and re-check if a timer became active.
+            setTimeout(() => {
+              const t = noSolutionTimer;
+              const isWatchingOthersTimerLater = !!(
+                t &&
+                t.originPlayerId &&
+                myId !== t.originPlayerId &&
+                (t.type === "reveal" || t.type === "no_solution") &&
+                !t.expired && !t.skipped
+              );
+              if (!isWatchingOthersTimerLater && !revealLockRef.current && !viewingRevealRef.current) {
+                console.log("[CLIENT] score_update: clearing cards after win", { viewingReveal: viewingRevealRef.current, revealLock: revealLockRef.current });
+                clearCardsIfAllowedRef.current();
+                setWaitingForOthersAfterWin(true);
+              } else {
+                setWaitingForOthersAfterWin(false);
+              }
+            }, 250);
+          } else {
+            // Maintain the ability to view the origin's cards during the active timer
+            if (!viewingRevealRef.current) {
+              setWaitingForOthersAfterWin(false);
+            }
+          }
         }
       } catch (e) {
         console.error("handling score_update", e);
@@ -695,9 +917,8 @@ export default function App() {
           setSelectedOperator(null);
           // If this player was already in a waiting state before the no-solution
           // challenge, return them to that waiting state (no active cards).
-          if (backup.wasWaiting) {
-            setCards([]);
-            setOriginalCards([]);
+          if (backup.wasWaiting && !viewingRevealRef.current) {
+            clearCardsIfAllowedRef.current();
             setWaitingForOthersAfterWin(true);
           }
           tempHandBackupRef.current = null;
@@ -1649,9 +1870,14 @@ export default function App() {
           </div>
         </div>
       )}
-      {noSolutionTimer && (
+      {(noSolutionTimer || (viewingRevealRef.current && lastRevealHandRef.current && lastRevealOriginRef.current)) && (
         <NoSolutionTimer
-          timer={noSolutionTimer}
+          timer={noSolutionTimer || {
+            type: "reveal",
+            originPlayerId: lastRevealOriginRef.current,
+            originHand: lastRevealHandRef.current,
+            expiresAt: lastRevealExpiresAtRef.current,
+          }}
           onSkip={(originPlayerId) => {
             const me = socket.getSocketId();
             if (!multiplayerRoom || !me) return;
@@ -1667,8 +1893,10 @@ export default function App() {
           originName={
             players.find(
               (p) =>
-                p.playerId ===
-                (noSolutionTimer && noSolutionTimer.originPlayerId)
+                p.playerId === (
+                  (noSolutionTimer && noSolutionTimer.originPlayerId) ||
+                  lastRevealOriginRef.current
+                )
             )?.name
           }
         />
@@ -1946,8 +2174,8 @@ export default function App() {
 
           {/* End of new addition */}
 
-          <div className={showingOriginHand ? "player-cards-highlight" : "container"}>
-            {showingOriginHand && (
+          <div className={(showingOriginHand || showingRevealHand) ? "player-cards-highlight" : "container"}>
+            {(showingOriginHand || showingRevealHand) && (
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
                 <div className="target-border-bs">
                   <span className="target-text-bs">Player's cards</span>
@@ -1955,13 +2183,13 @@ export default function App() {
               </div>
             )}
             <div className="row justify-content-center gx-3 gy-3 position-relative">
-              {waitingForOthersAfterWin && (
+              {waitingForOthersAfterWin && !viewingReveal && (
                 <div className="col-12">
                   <div className="alert alert-info mt-4">Waiting for other players...</div>
                 </div>
               )}
 
-              {!waitingForOthersAfterWin &&
+              {(!waitingForOthersAfterWin || viewingReveal) &&
                 (isReshuffling || newCardsAnimatingIn ? cardsToRender : cards).map(
                   (card, index) => {
                     const shouldAnimateOut =
