@@ -741,6 +741,26 @@ export default function App() {
       setHostId(null);
       setPlayerName(null);
     }
+    
+    // Clear all multiplayer-related states
+    setWaitingForOthersAfterWin(false);
+    setWaitingForOthers(false);
+    setPendingLoadedCount(0);
+    setPendingTotalCount(0);
+    setNoSolutionTimer(null);
+    setFinishedCount(0);
+    setActiveCount(0);
+    tempHandBackupRef.current = null;
+    pendingDealRef.current = null;
+    pendingRiddleRef.current = null;
+    
+    // Clear timer timeout if any
+    if (timerClearTimeoutRef.current) {
+      clearTimeout(timerClearTimeoutRef.current);
+      timerClearTimeoutRef.current = null;
+    }
+    
+    // Clear game state
     setIsReplaying(false);
     replaySessionIdRef.current += 1; // cancel any queued replay loops
     setReplayPendingMoves(null);
@@ -751,6 +771,11 @@ export default function App() {
     setHasWonCurrentRound(false);
     setFlyingCardInfo(null);
     setCards([]);
+    setOriginalCards([]);
+    setTarget(null);
+    setCurrentRoundTarget(null);
+    setFrozenSolution(null);
+    
     document.body.classList.remove("scrolling-disabled");
     try { window.history.replaceState(null, "", window.location.pathname); } catch { }
     setGameStarted(false);
@@ -1521,7 +1546,16 @@ export default function App() {
           ) :
             (<div><button
                 className="btn btn-primary btn-lg"
-                onClick={() => setGameStarted(true)}
+                onClick={() => {
+                  // Clear any leftover multiplayer state before starting solo
+                  setWaitingForOthersAfterWin(false);
+                  setWaitingForOthers(false);
+                  setNoSolutionTimer(null);
+                  setGameStarted(true);
+                  // Always start a fresh round when entering solo mode
+                  // Use setTimeout to ensure state updates have applied
+                  setTimeout(() => startNewRound(false), 0);
+                }}
               >
                 Solo
               </button>
