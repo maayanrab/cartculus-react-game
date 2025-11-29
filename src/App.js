@@ -540,6 +540,16 @@ export default function App() {
         const myId = socket.getSocketId();
         const isOrigin = myId && payload.originPlayerId === myId;
         const finished = payload.expired || payload.skipped || payload.resolvedBy;
+        
+        // If this is the START of a no-solution timer and I'm the origin
+        if (isOrigin && !finished) {
+          // Clear my cards and wait for others
+          setCards([]);
+          setOriginalCards([]);
+          setWaitingForOthersAfterWin(true);
+          tempHandBackupRef.current = null;
+        }
+        
         if (finished) {
           // Origin player waits without cards - server won't send state_sync to them
           if (isOrigin) {
@@ -1565,24 +1575,15 @@ export default function App() {
       {noSolutionTimer && (
         <NoSolutionTimer
           timer={noSolutionTimer}
-          onSkip={(originPlayerId, type) => {
+          onSkip={(originPlayerId) => {
             const me = socket.getSocketId();
             if (!multiplayerRoom || !me) return;
 
-            if (type === "reveal") {
-              // Last player's "Give up" during reveal
-              try {
-                socket.emitGiveUpReveal(multiplayerRoom, me);
-              } catch (e) {
-                console.error("emitGiveUpReveal failed", e);
-              }
-            } else {
-              // Normal no-solution Skip vote
-              try {
-                socket.emitSkipVote(multiplayerRoom, me, originPlayerId);
-              } catch (e) {
-                console.error("emitSkipVote failed", e);
-              }
+            // Use skip voting for both no-solution and reveal timers
+            try {
+              socket.emitSkipVote(multiplayerRoom, me, originPlayerId);
+            } catch (e) {
+              console.error("emitSkipVote failed", e);
             }
           }}
           currentPlayerId={socket.getSocketId()}
@@ -1718,13 +1719,14 @@ export default function App() {
                 <button
                   className="img-button reshuffle-btn"
                   onClick={() => {
-                    try { socket.emitDeclareNoSolution(multiplayerRoom, socket.getSocketId()); } catch (e) { console.error(e); }
-                    // I declared no-solution: remove my hand locally and wait for others
-                    try {
-                      setCards([]);
-                      setOriginalCards([]);
-                      setWaitingForOthersAfterWin(true);
-                    } catch (e) { }
+                    // Just emit to server - don't clear cards yet
+                    // The server will send no_solution_timer event if accepted,
+                    // and we'll handle clearing cards in that event handler
+                    try { 
+                      socket.emitDeclareNoSolution(multiplayerRoom, socket.getSocketId()); 
+                    } catch (e) { 
+                      console.error(e); 
+                    }
                   }}
                   disabled={
                     isReshuffling ||
@@ -1732,14 +1734,8 @@ export default function App() {
                     !gameStarted ||
                     isReplaying ||
                     (players.find(p => p.playerId === socket.getSocketId()) || {}).finished ||
-                    (
-                      noSolutionTimer &&                            // any timer active
-                      noSolutionTimer.type === "reveal" &&          // it's a reveal timer
-                      noSolutionTimer.originPlayerId === socket.getSocketId() &&
-                      !noSolutionTimer.expired &&
-                      !noSolutionTimer.skipped &&
-                      !noSolutionTimer.resolvedBy
-                    )
+                    // Disable if ANY timer is active (no-solution or reveal)
+                    (noSolutionTimer !== null)
                   }
                 >
                   <img src="./images/no-solution-button.png" alt="No Solution" title="No Solution" />

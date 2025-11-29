@@ -26,9 +26,8 @@ export default function NoSolutionTimer({
   const isReveal = timer.type === "reveal";
   const isNoSolution = timer.type === "no_solution" || !isReveal;
 
-  // Votes are only relevant for no-solution flow
+  // Votes work for both no-solution and reveal timers
   const hasVoted =
-    isNoSolution &&
     Array.isArray(timer.votes) &&
     timer.votes.includes(currentPlayerId);
 
@@ -54,38 +53,25 @@ export default function NoSolutionTimer({
       <div>Time remaining: {remaining}s</div>
 
       <div className="mt-2">
-        {isReveal ? (
-          // REVEAL MODE:
-          // Only the origin player gets a "Give up" button.
-          isOrigin ? (
-            <button
-              className="btn btn-sm btn-outline-danger"
-              onClick={() =>
-                onSkip && onSkip(timer.originPlayerId, "reveal")
-              }
-            >
-              Give up
-            </button>
-          ) : (
-            // Other players: no Skip button in reveal phase
-            <div className="text-muted">Try to solve it!</div>
-          )
-        ) : (
-          // NO-SOLUTION MODE:
-          // Non-origin players can vote Skip; origin never sees Skip.
-          !isOrigin &&
+        {/* Both no-solution and reveal use skip voting for non-origin players */}
+        {!isOrigin &&
           (hasVoted ? (
             <div className="text-muted">Voted to skip</div>
           ) : (
             <button
               className="btn btn-sm btn-outline-primary"
               onClick={() =>
-                onSkip && onSkip(timer.originPlayerId, "no_solution")
+                onSkip && onSkip(timer.originPlayerId)
               }
             >
               Vote to skip
             </button>
-          ))
+          ))}
+        {/* Origin player sees nothing - they're waiting */}
+        {isOrigin && (
+          <div className="text-muted">
+            {isReveal ? "Waiting for others..." : "Waiting for verdict..."}
+          </div>
         )}
       </div>
     </div>

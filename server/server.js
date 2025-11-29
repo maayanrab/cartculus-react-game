@@ -190,13 +190,19 @@ io.on("connection", (socket) => {
   socket.on("play_move", ({ roomId, playerId, move }) => {
     const room = rooms.getRoom(roomId);
     let isNoSolutionChallenge = false;
+    let isRevealChallenge = false;
 
     // Check if this is solving someone else's "no solution" challenge
     if (room && room.noSolution && room.noSolution.originPlayerId !== playerId) {
       isNoSolutionChallenge = true;
     }
 
-    const awarded = rooms.playerFinished(roomId, playerId, isNoSolutionChallenge);
+    // Check if this is solving someone else's revealed hand
+    if (room && room.reveal && room.reveal.originPlayerId !== playerId) {
+      isRevealChallenge = true;
+    }
+
+    const awarded = rooms.playerFinished(roomId, playerId, isNoSolutionChallenge || isRevealChallenge);
 
     // If someone finished while a no-solution or reveal timer was active, cancel it
     try {
@@ -241,12 +247,13 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("score_update", {
         scores: rooms.getScores(roomId),
         awardedTo: awarded,
-        // NEW: distinguish a normal win vs solving someone else's no-solution
-        reason: isNoSolutionChallenge ? "no_solution_challenge" : "win",
+        // NEW: distinguish a normal win vs solving someone else's no-solution or reveal
+        reason: isNoSolutionChallenge ? "no_solution_challenge" : 
+                isRevealChallenge ? "reveal_challenge" : "win",
       });
       io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 
-      if (!isNoSolutionChallenge) {
+      if (!isNoSolutionChallenge && !isRevealChallenge) {
         // Solver waits without cards; everyone else continues
       }
     }
@@ -304,23 +311,23 @@ io.on("connection", (socket) => {
   });
 
   socket.on("declare_no_solution", ({ roomId, playerId }) => {
-// Prevent the last revealed player from starting a new no-solution
-// while their reveal window is active.
+// Prevent declaring no-solution if ANY timer (no-solution or reveal) is active
 try {
+  const noSolutionPublic = rooms.getNoSolutionTimerPublic
+    ? rooms.getNoSolutionTimerPublic(roomId)
+    : null;
+  if (noSolutionPublic) {
+    return; // ignore declare_no_solution while any no-solution timer is active
+  }
+  
   const revealPublic = rooms.getRevealTimerPublic
     ? rooms.getRevealTimerPublic(roomId)
     : null;
-  if (
-    revealPublic &&
-    revealPublic.originPlayerId === playerId &&
-    !revealPublic.expired &&
-    !revealPublic.skipped &&
-    !revealPublic.resolvedBy
-  ) {
-    return; // ignore declare_no_solution during active reveal for this player
+  if (revealPublic) {
+    return; // ignore declare_no_solution while any reveal timer is active
   }
 } catch (e) {
-  console.error("error checking reveal before declare_no_solution", e);
+  console.error("error checking timers before declare_no_solution", e);
 }
 
     rooms.startNoSolutionTimer(roomId, playerId, (result) => {
@@ -372,78 +379,80 @@ try {
   });
 
   socket.on("skip_vote", ({ roomId, playerId, originPlayerId }) => {
-    const done = rooms.registerSkipVote(roomId, playerId, originPlayerId);
-    io.to(roomId).emit(
-      "no_solution_timer",
-      rooms.getNoSolutionTimerPublic(roomId)
-    );
-    if (done) {
-      const result = rooms.finishNoSolutionBySkip(roomId, originPlayerId);
-      io.to(roomId).emit("score_update", {
-        scores: rooms.getScores(roomId),
-        awardedTo: result.awardedTo,
-        // NEW: points given because everyone voted to skip (no-solution accepted)
-        reason: "no_solution_skip",
-      });
-      io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+    // Check if this is a no-solution or reveal timer
+    const isNoSolution = rooms.getNoSolutionTimerPublic(roomId) !== null;
+    const isReveal = rooms.getRevealTimerPublic(roomId) !== null;
 
-      // After awarding due to skip completion, restore other players' hands
-      try {
-        const room = rooms.getRoom(roomId);
-        if (room) {
-          for (const p of room.players.values()) {
-            if (p.playerId === originPlayerId) continue;
-            const state = rooms.getStateForRoom(roomId, p.playerId);
-            io.to(p.socketId).emit("state_sync", state);
+    if (isNoSolution) {
+      const done = rooms.registerSkipVote(roomId, playerId, originPlayerId);
+      io.to(roomId).emit(
+        "no_solution_timer",
+        rooms.getNoSolutionTimerPublic(roomId)
+      );
+      if (done) {
+        const result = rooms.finishNoSolutionBySkip(roomId, originPlayerId);
+        io.to(roomId).emit("score_update", {
+          scores: rooms.getScores(roomId),
+          awardedTo: result.awardedTo,
+          // NEW: points given because everyone voted to skip (no-solution accepted)
+          reason: "no_solution_skip",
+        });
+        io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+
+        // After awarding due to skip completion, restore other players' hands
+        try {
+          const room = rooms.getRoom(roomId);
+          if (room) {
+            for (const p of room.players.values()) {
+              if (p.playerId === originPlayerId) continue;
+              const state = rooms.getStateForRoom(roomId, p.playerId);
+              io.to(p.socketId).emit("state_sync", state);
+            }
           }
+        } catch (e) {
+          console.error(
+            "error emitting state_sync after skip finish",
+            e
+          );
         }
-      } catch (e) {
-        console.error(
-          "error emitting state_sync after skip finish",
-          e
-        );
+
+        io.to(roomId).emit("no_solution_timer", result.broadcast);
+
+        // after skip-resolution, check if everyone is waiting
+        try {
+          scheduleNewRoundIfAllWaiting(roomId);
+        } catch (e) {
+          console.error(
+            "error scheduling next round after skip_vote",
+            e
+          );
+        }
       }
+    } else if (isReveal) {
+      const done = rooms.registerRevealSkipVote(roomId, playerId, originPlayerId);
+      io.to(roomId).emit(
+        "reveal_timer",
+        rooms.getRevealTimerPublic(roomId)
+      );
+      if (done) {
+        // Everyone voted to skip the reveal - mark origin as finished and start new round
+        rooms.cancelReveal(roomId);
+        rooms.markPlayerRoundFinished(roomId, originPlayerId);
+        
+        io.to(roomId).emit("reveal_timer", {
+          originPlayerId,
+          expired: true,
+          skipped: true,
+        });
+        io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 
-      io.to(roomId).emit("no_solution_timer", result.broadcast);
-
-      // after skip-resolution, check if everyone is waiting
-      try {
-        scheduleNewRoundIfAllWaiting(roomId);
-      } catch (e) {
-        console.error(
-          "error scheduling next round after skip_vote",
-          e
-        );
+        // Start a new round with no points given
+        startNewRoundForRoom(roomId);
       }
     }
   });
 
-  // NEW: last player gives up during reveal -> end reveal immediately and reshuffle with no points
-  socket.on("give_up_reveal", ({ roomId, playerId }) => {
-    try {
-      const revealPublic = rooms.getRevealTimerPublic(roomId);
-      if (!revealPublic) return; // no active reveal
-      if (revealPublic.originPlayerId !== playerId) return; // only origin can give up
-
-      // Cancel the running reveal timer so the 30s timeout won't fire later
-      rooms.cancelReveal(roomId);
-      // Mark the origin as finished for this round
-      rooms.markPlayerRoundFinished(roomId, playerId);
-
-      // Notify clients that the reveal ended (treat like an immediate timeout)
-      io.to(roomId).emit("reveal_timer", {
-        ...revealPublic,
-        expired: true,
-      });
-
-      io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-
-      // Start a brand new round with no points given
-      startNewRoundForRoom(roomId);
-    } catch (e) {
-      console.error("error handling give_up_reveal", e);
-    }
-  });
+  // Removed give_up_reveal - now using skip voting for reveal timers instead
 
   socket.on("request_reshuffle", ({ roomId }) => {
     // Manual reshuffle request uses same pipeline as an auto next round.

@@ -237,6 +237,9 @@ class Rooms {
 
     player.roundFinished = true;
     player.finishedStatus = "waiting";
+    
+    // Log when player enters waiting state
+    console.log(`${player.name || playerId} has finished (waiting for other players)`);
   }
 
   // NEW: helper used by the server to know when to deal a new round.
@@ -261,7 +264,7 @@ class Rooms {
       clearTimeout(room.noSolution.timeoutId);
     }
 
-    const duration = 30 * 1000;
+    const duration = 45 * 1000;
     const expiresAt = Date.now() + duration;
     const votes = new Set();
 
@@ -388,7 +391,7 @@ class Rooms {
     };
   }
 
-  // Reveal timer – controls a 30s window where the last player can still solve.
+  // Reveal timer – controls a 45s window where the last player can still solve.
   // No points are given automatically on expiry.
   startRevealTimer(roomId, originPlayerId, cb) {
     const room = this.rooms.get(roomId);
@@ -400,8 +403,9 @@ class Rooms {
       clearTimeout(room.reveal.timeoutId);
     }
 
-    const duration = 30 * 1000;
+    const duration = 45 * 1000;
     const expiresAt = Date.now() + duration;
+    const votes = new Set();
 
     const originHand =
       (room.deal &&
@@ -409,7 +413,7 @@ class Rooms {
         room.deal.perPlayerHands[originPlayerId]) ||
       [];
 
-    room.reveal = { originPlayerId, expiresAt, timeoutId: null };
+    room.reveal = { originPlayerId, expiresAt, votes, timeoutId: null };
 
     // After the reveal window ends, no one gets points automatically.
     // The server will start a fresh round when it sees this "expired" event.
@@ -452,9 +456,25 @@ class Rooms {
     return {
       originPlayerId: room.reveal.originPlayerId,
       expiresAt: room.reveal.expiresAt,
+      votes: Array.from(room.reveal.votes),
       originHand,
       type: "reveal",
     };
+  }
+
+  registerRevealSkipVote(roomId, playerId, originPlayerId) {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.reveal) return false;
+
+    room.reveal.votes.add(playerId);
+
+    const otherPlayers = Array.from(room.players.values()).filter(
+      (p) => p.playerId !== originPlayerId
+    );
+
+    return otherPlayers.every((p) =>
+      room.reveal.votes.has(p.playerId)
+    );
   }
 
   cancelNoSolution(roomId) {
