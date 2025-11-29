@@ -12,12 +12,19 @@ export default function PlayerList({ players = [], scores = {}, hostId = null, r
         )}
       </div>
       <ul className="list-unstyled mb-0 d-flex flex-column gap-1">
-        {players.map((p) => (
-          <li key={p.playerId} className="d-flex justify-content-between align-items-center">
-            <span>{p.name} {p.playerId === hostId ? <strong>(host)</strong> : null}</span>
-            <span className="text-muted">{scores[p.playerId] || 0}</span>
-          </li>
-        ))}
+        {players.map((p) => {
+          const isMe = p.playerId === currentPlayerId;
+          return (
+            <li key={p.playerId} className="d-flex justify-content-between align-items-center">
+              <span style={isMe ? { fontStyle: 'italic', color: '#0000ffff' } : {}}>
+                {p.name} {p.playerId === hostId ? <strong>(host)</strong> : null}
+              </span>
+              <span className="text-muted" style={isMe ? { fontStyle: 'italic', color: '#0000ffff' } : {}}>
+                {scores[p.playerId] || 0}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
