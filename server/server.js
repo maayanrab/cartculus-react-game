@@ -424,22 +424,12 @@ try {
         });
         io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 
-        // After awarding due to skip completion, restore other players' hands
-        try {
-          const room = rooms.getRoom(roomId);
-          if (room) {
-            for (const p of room.players.values()) {
-              if (p.playerId === originPlayerId) continue;
-              const state = rooms.getStateForRoom(roomId, p.playerId);
-              io.to(p.socketId).emit("state_sync", state);
-            }
-          }
-        } catch (e) {
-          console.error(
-            "error emitting state_sync after skip finish",
-            e
-          );
-        }
+        // Broadcast that skip is complete but don't interrupt active players
+        // The timer will be cleared from UI but players can continue solving
+        io.to(roomId).emit("no_solution_timer", {
+          ...result.broadcast,
+          skipComplete: true, // Flag to indicate skip voting finished but timer continues
+        });
 
         io.to(roomId).emit("no_solution_timer", result.broadcast);
 
@@ -472,6 +462,21 @@ try {
           expired: true,
           skipped: true,
         });
+        
+        // Restore cards for non-origin players before starting new round
+        try {
+          const room = rooms.getRoom(roomId);
+          if (room) {
+            for (const p of room.players.values()) {
+              if (p.playerId === originPlayerId) continue;
+              const state = rooms.getStateForRoom(roomId, p.playerId);
+              io.to(p.socketId).emit("state_sync", state);
+            }
+          }
+        } catch (e) {
+          console.error("error restoring hands after reveal skip", e);
+        }
+        
         io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 
         // Start a new round with no points given

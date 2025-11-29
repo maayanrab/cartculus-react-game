@@ -485,17 +485,6 @@ export default function App() {
         return;
       }
 
-      // If I'm currently in a "waiting" state (for example, I declared no-solution
-      // and should wait without cards), ignore any attempt to restore a live hand.
-      if (
-        waitingForOthersAfterWinRef.current &&
-        state &&
-        state.cards &&
-        state.cards.length > 0
-      ) {
-        return;
-      }
-
       if (state && state.cards && state.cards.length > 0) {
         // Restore my own original hand (used after no-solution expires / skip ends,
         // or when I solved someone else's no-solution challenge and should get my
@@ -573,10 +562,10 @@ export default function App() {
         if (!payload) return;
         const myId = socket.getSocketId();
         const isOrigin = myId && payload.originPlayerId === myId;
-        const finished = payload.expired || payload.skipped || payload.resolvedBy;
+        const finished = payload.expired || (payload.skipped && !payload.skipComplete) || payload.resolvedBy;
         
         // If this is the START of a no-solution timer and I'm the origin
-        if (isOrigin && !finished) {
+        if (isOrigin && !finished && !payload.skipComplete) {
           // Clear my cards and wait for others
           setCards([]);
           setOriginalCards([]);
