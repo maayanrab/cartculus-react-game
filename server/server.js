@@ -268,13 +268,7 @@ io.on("connection", (socket) => {
             resolvedBy: playerId,
           });
 
-          const solver = Array.from(room.players.values()).find(
-            (p) => p.playerId === playerId
-          );
-          if (solver && !solver.roundFinished) {
-            const state = rooms.getStateForRoom(roomId, playerId);
-            io.to(socket.id).emit("state_sync", state);
-          }
+          // Solver is now marked as finished by playerFinished(), no need to restore their hand
         }
       }
 
@@ -467,8 +461,6 @@ try {
       }
     }
   });
-
-  // Removed give_up_reveal - now using skip voting for reveal timers instead
 
   socket.on("request_reshuffle", ({ roomId }) => {
     // Manual reshuffle request uses same pipeline as an auto next round.

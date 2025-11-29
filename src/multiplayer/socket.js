@@ -56,12 +56,6 @@ export function emitSkipVote(roomId, playerId, originPlayerId) {
   socket.emit("skip_vote", { roomId, playerId, originPlayerId });
 }
 
-// NEW: origin player gives up during reveal window
-export function emitGiveUpReveal(roomId, playerId) {
-  if (!socket) return;
-  socket.emit("give_up_reveal", { roomId, playerId });
-}
-
 export function on(event, cb) {
   if (!socket) connect();
   socket.on(event, cb);
@@ -91,7 +85,6 @@ export default {
   emitPlayMove,
   emitDeclareNoSolution,
   emitSkipVote,
-  emitGiveUpReveal,
   requestReshuffle,
   emitDealLoaded,
   on,

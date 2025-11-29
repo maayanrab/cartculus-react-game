@@ -207,16 +207,19 @@ class Rooms {
       null;
     if (!player) return null;
 
-    // Prevent double-award if player already closed their round (except for no-solution challenges)
+    // Prevent double-award if player already closed their round (except for challenge solvers)
     if (!isNoSolutionChallenge && player.roundFinished) return null;
 
     const pts = this.getNextPoints(roomId);
     room.scores[playerId] = (room.scores[playerId] || 0) + pts;
 
     player.solvedCount = (player.solvedCount || 0) + 1;
-    player.finishedStatus = "solved";
-
+    
+    // When solving a challenge (no-solution or reveal), only award points.
+    // The solver stays active and does NOT get marked as finished.
+    // When solving own cards, mark as finished normally.
     if (!isNoSolutionChallenge) {
+      player.finishedStatus = "solved";
       this.markPlayerRoundFinished(roomId, playerId);
     }
 
