@@ -520,7 +520,16 @@ export default function App() {
         console.warn("Received deal_riddle while actively playing - ignoring to prevent interrupting gameplay");
         return;
       }
-      processDealRiddle(data);
+        // Any new riddle indicates a fresh round: clear lingering reveal state
+        setViewingReveal(false);
+        viewingRevealRef.current = false;
+        revealLockRef.current = false;
+        lastRevealHandRef.current = null;
+        lastRevealOriginRef.current = null;
+        lastRevealExpiresAtRef.current = null;
+        if (timerClearTimeoutRef.current) { try { clearTimeout(timerClearTimeoutRef.current); } catch {} timerClearTimeoutRef.current = null; }
+        setNoSolutionTimer(null);
+        processDealRiddle(data);
     });
 
     // helper: process a pending deal
