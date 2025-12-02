@@ -2223,10 +2223,8 @@ export default function App() {
                   const originPlayer = players.find(p => p.playerId === originId);
                   const label = originPlayer && originPlayer.name ? `${originPlayer.name}'s cards` : "Player's cards";
                   return (
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-                      <div className="target-border-bs">
-                        <span className="target-text-bs">{label}</span>
-                      </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
+                      <span className="player-cards-name">{label}</span>
                     </div>
                   );
                 })()}
