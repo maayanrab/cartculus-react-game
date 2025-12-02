@@ -33,6 +33,11 @@ export default function NoSolutionTimer({
 
   const labelName = originName || timer.originPlayerId;
 
+  const timerInactive = !!(timer.expired || timer.skipped || timer.skipComplete);
+
+  // Reveal: everyone can vote, including origin. No-solution: everyone except origin.
+  const canVote = !timerInactive && (isReveal ? true : !isOrigin);
+
   return (
     <div
       className="no-solution-timer position-absolute p-2"
@@ -53,22 +58,18 @@ export default function NoSolutionTimer({
       <div>Time remaining: {remaining}s</div>
 
       <div className="mt-2">
-        {/* Both no-solution and reveal use skip voting for non-origin players */}
-        {!isOrigin &&
-          (hasVoted ? (
+        {canVote ? (
+          hasVoted ? (
             <div className="text-muted">Voted to skip</div>
           ) : (
             <button
               className="btn btn-sm btn-outline-primary"
-              onClick={() =>
-                onSkip && onSkip(timer.originPlayerId)
-              }
+              onClick={() => onSkip && onSkip(timer.originPlayerId)}
             >
               Vote to skip
             </button>
-          ))}
-        {/* Origin player sees nothing - they're waiting */}
-        {isOrigin && (
+          )
+        ) : (
           <div className="text-muted">
             {isReveal ? "Waiting for others..." : "Waiting for verdict..."}
           </div>

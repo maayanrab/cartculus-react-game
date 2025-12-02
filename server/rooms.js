@@ -481,13 +481,23 @@ class Rooms {
 
     room.reveal.votes.add(playerId);
 
-    const otherPlayers = Array.from(room.players.values()).filter(
-      (p) => p.playerId !== originPlayerId
+    // Require ALL ACTIVE players (including the origin) to vote to skip.
+    // Active players are those who received hands at round start (isActiveInRound).
+    const activePlayers = Array.from(room.players.values()).filter(
+      (p) => p.isActiveInRound
     );
-
-    return otherPlayers.every((p) =>
-      room.reveal.votes.has(p.playerId)
-    );
+    const requiredIds = activePlayers.map(p => p.playerId);
+    const done = requiredIds.every((pid) => room.reveal.votes.has(pid));
+    try {
+      console.log("[VOTE] reveal skip", {
+        roomId,
+        originPlayerId,
+        votes: Array.from(room.reveal.votes),
+        required: requiredIds,
+        done,
+      });
+    } catch {}
+    return done;
   }
 
   cancelNoSolution(roomId) {
