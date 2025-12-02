@@ -2218,13 +2218,18 @@ export default function App() {
             const originActiveAndIsOrigin = originNoSolutionActive && myId && originId && myId === originId;
             return (
               <div className={`${(showingOriginHand || showingRevealHand) ? "player-cards-highlight" : "container"} ${originActiveAndIsOrigin ? "cards-disabled" : ""}`}>
-            {(showingOriginHand || showingRevealHand) && (
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-                <div className="target-border-bs">
-                  <span className="target-text-bs">Player's cards</span>
-                </div>
-              </div>
-            )}
+                {(showingOriginHand || showingRevealHand) && (() => {
+                  const originId = (noSolutionTimer && noSolutionTimer.originPlayerId) || lastRevealOriginRef.current;
+                  const originPlayer = players.find(p => p.playerId === originId);
+                  const label = originPlayer && originPlayer.name ? `${originPlayer.name}'s cards` : "Player's cards";
+                  return (
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+                      <div className="target-border-bs">
+                        <span className="target-text-bs">{label}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
             <div className="row justify-content-center gx-3 gy-3 position-relative">
               {waitingForOthersAfterWin && !viewingReveal && !originActiveAndIsOrigin && (
                 <div className="col-12">
