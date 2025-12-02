@@ -80,6 +80,8 @@ export default function App() {
   const replayInitialTargetRef = useRef(null);
   const replaySessionIdRef = useRef(0);
   const tempHandBackupRef = useRef(null);
+  const roundStartHandRef = useRef(null); // Snapshot of hand at round start
+  const [originNoSolutionActive, setOriginNoSolutionActive] = useState(false); // Origin-only no-solution viewing state
   const pendingDealRef = useRef(null);
   const pendingRiddleRef = useRef(null);
   const waitingForOthersAfterWinRef = useRef(waitingForOthersAfterWin);
@@ -550,6 +552,8 @@ export default function App() {
         setCards(finalCards);
         // Preserve full card objects for reset/undo
         setOriginalCards(myHand);
+        // Snapshot round-start hand for potential origin no-solution display
+        roundStartHandRef.current = myHand ? myHand.map((c) => ({ ...c })) : [];
         if (data.target !== undefined) {
           setTarget(data.target);
           setCurrentRoundTarget(data.target);
@@ -679,6 +683,8 @@ export default function App() {
         
         // Track reveal viewing state for finished players to prevent premature hiding
         if (payload && payload.type === "reveal" && !payload.expired && !payload.skipped) {
+          // Ensure origin-only disabled state is off during reveal
+          setOriginNoSolutionActive(false);
           setViewingReveal(true);
           revealLockRef.current = true;
           if (Array.isArray(payload.originHand) && payload.originHand.length > 0) {
@@ -724,6 +730,7 @@ export default function App() {
         // If this reveal timer is finished (expired/skipped), clear it after delay
         if (payload && (payload.expired || payload.skipped)) {
           setViewingReveal(false);
+          setOriginNoSolutionActive(false);
           revealLockRef.current = false;
           timerClearTimeoutRef.current = setTimeout(() => {
             const current = noSolutionTimerRef.current;
@@ -759,20 +766,32 @@ export default function App() {
         
         // If this is the START of a no-solution timer and I'm the origin
         if (isOrigin && !finished && !payload.skipComplete) {
-          // Clear my cards and wait for others (guarded)
-          console.log("[CLIENT] origin start no-solution; clear if allowed", { viewingReveal: viewingRevealRef.current, revealLock: revealLockRef.current });
-          clearCardsIfAllowedRef.current();
-          setWaitingForOthersAfterWin(true);
+          // Origin should see their own starting-round cards, disabled/grayed
+          setOriginNoSolutionActive(true);
+          // Reset to round-start snapshot so user sees initial hand state
+          const snapshot = Array.isArray(roundStartHandRef.current) ? roundStartHandRef.current : [];
+          const finalCards = snapshot.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
+          setCards(finalCards);
+          setOriginalCards(snapshot);
+          setHistory([]);
+          setSelected([]);
+          setSelectedOperator(null);
+          setGameStarted(true);
+          // Still indicate waiting for verdict in HUD, but do not show generic waiting overlay
+          setWaitingForOthersAfterWin(false);
           tempHandBackupRef.current = null;
         }
         
         if (finished) {
           // Origin player waits without cards - server won't send state_sync to them
           if (isOrigin) {
-            console.log("[CLIENT] origin finished no-solution; clear if allowed", { viewingReveal: viewingRevealRef.current, revealLock: revealLockRef.current });
-            clearCardsIfAllowedRef.current();
+            // End origin-only viewing state
+            setOriginNoSolutionActive(false);
+            // Keep waiting message if not transitioning into reveal
             if (!viewingRevealRef.current) {
               setWaitingForOthersAfterWin(true);
+              // Optionally hide cards now
+              clearCardsIfAllowedRef.current();
             }
             tempHandBackupRef.current = null;
           }
@@ -906,10 +925,8 @@ export default function App() {
       const isOrigin = currentId && originId && currentId === originId;
 
       if (isOrigin) {
-        // Origin player: ensure cards stay cleared and show waiting message
-        // They declared "no solution" so they wait without cards until next round
-        setCards([]);
-        setOriginalCards([]);
+        // Origin player: end no-solution active view
+        setOriginNoSolutionActive(false);
         setWaitingForOthersAfterWin(true);
         tempHandBackupRef.current = null;
       } else {
@@ -1479,6 +1496,12 @@ export default function App() {
 
   const handleOperatorSelect = (op) => {
     if (isReplaying) return;
+    // Disable operators for origin during active no-solution (only for origin)
+    {
+      const myId = socket.getSocketId();
+      const originId = (noSolutionTimer && noSolutionTimer.originPlayerId) || null;
+      if (originNoSolutionActive && myId && originId && myId === originId) return;
+    }
     if (isReshuffling || newCardsAnimatingIn || !gameStarted || flyingCardInfo)
       return;
 
@@ -1489,6 +1512,12 @@ export default function App() {
     // allow operations even if isReshuffling/newCardsAnimatingIn are set in some race cases,
     // but still disallow when a merge is already visually happening
     if (flyingCardInfo) return;
+    // Block operations for origin during active no-solution (only for origin)
+    {
+      const myId = socket.getSocketId();
+      const originId = (noSolutionTimer && noSolutionTimer.originPlayerId) || null;
+      if (originNoSolutionActive && myId && originId && myId === originId) return;
+    }
 
     const sourceCards = isReplayingRef.current ? cardsRef.current : cards;
     const cardA_Obj = sourceCards.find((c) => c.id === aId);
@@ -2183,7 +2212,12 @@ export default function App() {
 
           {/* End of new addition */}
 
-          <div className={(showingOriginHand || showingRevealHand) ? "player-cards-highlight" : "container"}>
+          {(() => {
+            const myId = socket.getSocketId();
+            const originId = (noSolutionTimer && noSolutionTimer.originPlayerId) || null;
+            const originActiveAndIsOrigin = originNoSolutionActive && myId && originId && myId === originId;
+            return (
+              <div className={`${(showingOriginHand || showingRevealHand) ? "player-cards-highlight" : "container"} ${originActiveAndIsOrigin ? "cards-disabled" : ""}`}>
             {(showingOriginHand || showingRevealHand) && (
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
                 <div className="target-border-bs">
@@ -2192,13 +2226,13 @@ export default function App() {
               </div>
             )}
             <div className="row justify-content-center gx-3 gy-3 position-relative">
-              {waitingForOthersAfterWin && !viewingReveal && (
+              {waitingForOthersAfterWin && !viewingReveal && !originActiveAndIsOrigin && (
                 <div className="col-12">
                   <div className="alert alert-info mt-4">Waiting for other players...</div>
                 </div>
               )}
 
-              {(!waitingForOthersAfterWin || viewingReveal) &&
+              {(!waitingForOthersAfterWin || viewingReveal || originActiveAndIsOrigin) &&
                 (isReshuffling || newCardsAnimatingIn ? cardsToRender : cards).map(
                   (card, index) => {
                     const shouldAnimateOut =
@@ -2240,6 +2274,7 @@ export default function App() {
                               !newCardsAnimatingIn &&
                               !card.isPlaceholder &&
                               !card.invisible &&
+                              !originActiveAndIsOrigin &&
                               (flyingCardInfo ? flyingCardInfo.id !== card.id : true)
                               ? () => handleCardClick(card.id)
                               : undefined
@@ -2286,6 +2321,8 @@ export default function App() {
               )}
             </div>
           </div>
+            );
+          })()}
         </>
       )}
 

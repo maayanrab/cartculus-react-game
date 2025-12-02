@@ -216,6 +216,19 @@ button {
   background-color: #fff;
 }
 
+/* Disabled state for origin player's cards during no-solution */
+.cards-disabled {
+  opacity: 0.55; /* Visually grayed out */
+}
+.cards-disabled .operator-button,
+.cards-disabled .img-button {
+  pointer-events: none;
+}
+.cards-disabled .reshuffle-card-container,
+.cards-disabled .card {
+  pointer-events: none;
+}
+
 /* Reshuffle Animation */
 /* Apply animation to the wrapper col-6 div */
 .reshuffle-card-container.card-animating-out {
