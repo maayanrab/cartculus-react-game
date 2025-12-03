@@ -1778,17 +1778,18 @@ export default function App() {
       >
         <h1 className="mb-4">CartCulus</h1>
 
-        <div className="form-check form-switch d-flex justify-content-center align-items-center">
-          <input
-            className="form-check-input"
-            type="checkbox"
-            id="soundsToggleMainMenu"
-            checked={soundsOn}
-            onChange={() => setSoundsOn(!soundsOn)}
-          />
-          <label className="form-check-label ms-2" htmlFor="soundsToggleMainMenu">
-            Sounds
-          </label>
+        <div className="d-flex justify-content-center align-items-center">
+          <button
+            className="img-button toggle-btn"
+            onClick={() => setSoundsOn(!soundsOn)}
+            aria-label="Toggle sounds"
+            title="Toggle sounds"
+          >
+            <img
+              src={soundsOn ? "./images/sound-toggle-on.png" : "./images/sound-toggle-off.png"}
+              alt={soundsOn ? "Sounds On" : "Sounds Off"}
+            />
+          </button>
         </div>
         <br />
 
@@ -2013,33 +2014,31 @@ export default function App() {
         </button>
       </div>
 
-      <div className="position-absolute top-0 end-0 m-2">
+      <div className="position-absolute top-0 end-0 m-2 toggles-stack">
         {!multiplayerRoom ? (
-        <div className="form-check form-switch">
-          <input
-            className="form-check-input"
-            type="checkbox"
-            id="autoReshuffleToggle"
-            checked={autoReshuffle}
-            onChange={() => setAutoReshuffle(!autoReshuffle)}
-          />
-          <label className="form-check-label" htmlFor="autoReshuffleToggle">
-            Auto-reshuffle
-          </label>
-        </div>
+          <button
+            className="img-button toggle-btn"
+            onClick={() => setAutoReshuffle(!autoReshuffle)}
+            aria-label="Toggle auto-reshuffle"
+            title="Toggle auto-reshuffle"
+          >
+            <img
+              src={autoReshuffle ? "./images/reshuffle-toggle-on.png" : "./images/reshuffle-toggle-off.png"}
+              alt={autoReshuffle ? "Auto-reshuffle On" : "Auto-reshuffle Off"}
+            />
+          </button>
         ) : null}
-        <div className="form-check form-switch mt-2">
-          <input
-            className="form-check-input"
-            type="checkbox"
-            id="soundsToggle"
-            checked={soundsOn}
-            onChange={() => setSoundsOn(!soundsOn)}
+        <button
+          className="img-button toggle-btn"
+          onClick={() => setSoundsOn(!soundsOn)}
+          aria-label="Toggle sounds"
+          title="Toggle sounds"
+        >
+          <img
+            src={soundsOn ? "./images/sound-toggle-on.png" : "./images/sound-toggle-off.png"}
+            alt={soundsOn ? "Sounds On" : "Sounds Off"}
           />
-          <label className="form-check-label" htmlFor="soundsToggle">
-            Sounds
-          </label>
-        </div>
+        </button>
       </div>
 
       <h1 className="text-start text-sm-center">

@@ -409,6 +409,7 @@ button {
   border: none;
   padding: 0;
   cursor: pointer;
+  line-height: 0; /* remove extra vertical whitespace from inline content */
 }
 
 .img-button[disabled] {
@@ -420,6 +421,24 @@ button {
   width: 44px; /* slightly larger default */
   height: 44px;
   object-fit: contain;
+  display: block; /* avoid baseline spacing below images */
+}
+
+/* Slightly larger size for top-right toggles */
+.img-button.toggle-btn img {
+  width: 56px;
+  /* height: 56px; */
+}
+
+/* Tight vertical stack for top-right toggles */
+.toggles-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: 0; /* absolutely no space between items */
+}
+.toggles-stack .img-button {
+  margin: 0; /* ensure buttons have no margins */
 }
 
 /* Make the reshuffle button 20% larger than other image buttons */
