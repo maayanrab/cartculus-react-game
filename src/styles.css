@@ -417,13 +417,19 @@ button {
 }
 
 .img-button img {
-  width: 40px;
-  height: 40px;
+  width: 44px; /* slightly larger default */
+  height: 44px;
   object-fit: contain;
 }
 
 /* Make the reshuffle button 20% larger than other image buttons */
 .img-button.reshuffle-btn img {
-  width: 48px; /* 40px * 1.2 */
-  height: 48px;
+  width: 52px; /* keep reshuffle visually prominent */
+  height: 52px;
+}
+
+/* Home button size to match other primary controls */
+.img-button.home-btn img {
+  width: 64px;
+  height: 64px;
 }

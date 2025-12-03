@@ -1853,10 +1853,14 @@ export default function App() {
           {/* Home button while in Lobby so player can cancel/return (positioned relative to the container)
               This ensures it aligns like the in-match Home button instead of being pinned to the viewport. */}
           <div className="position-absolute top-0 start-0 m-2 d-none d-sm-block">
-            <button className="btn btn-primary btn-lg" onClick={handleGoHome}>🏠︎</button>
+            <button className="img-button home-btn" onClick={handleGoHome}>
+              <img src="./images/home-button.png" alt="Home" title="Home" />
+            </button>
           </div>
           <div className="position-absolute top-0 start-50 translate-middle-x mt-2 d-block d-sm-none">
-            <button className="btn btn-primary btn-lg" onClick={handleGoHome}>🏠︎</button>
+            <button className="img-button home-btn" onClick={handleGoHome}>
+              <img src="./images/home-button.png" alt="Home" title="Home" />
+            </button>
           </div>
 
           <h1 className="text-start text-sm-center">
@@ -1944,7 +1948,7 @@ export default function App() {
       {/* Home button - desktop/tablet: top-left */}
       <div className="position-absolute top-0 start-0 m-2 d-none d-sm-block">
         <button
-          className="btn btn-primary btn-lg"
+          className="img-button home-btn"
           onClick={() => {
             // Leave multiplayer room if present, then return to main menu
             if (multiplayerRoom) {
@@ -1971,14 +1975,14 @@ export default function App() {
             setGameStarted(false);
           }}
         >
-          🏠︎
+          <img src="./images/home-button.png" alt="Home" title="Home" />
         </button>
       </div>
 
       {/* Home button - small screens: top-center */}
       <div className="position-absolute top-0 start-50 translate-middle-x mt-2 d-block d-sm-none">
         <button
-          className="btn btn-primary btn-lg"
+          className="img-button home-btn"
           onClick={() => {
             // Leave multiplayer room if present, then return to main menu
             if (multiplayerRoom) {
@@ -2005,7 +2009,7 @@ export default function App() {
             setGameStarted(false);
           }}
         >
-          🏠︎
+          <img src="./images/home-button.png" alt="Home" title="Home" />
         </button>
       </div>
 
