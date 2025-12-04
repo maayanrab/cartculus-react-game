@@ -358,14 +358,20 @@ export default function App() {
     }
   };
 
+  // Replay pacing configuration
+  const REPLAY_DELAY_FIRST_CARD = 500;     // pause after highlighting first card
+  const REPLAY_DELAY_OPERATOR = 500;       // pause after selecting operator
+  const REPLAY_DELAY_SECOND_CARD = 350;    // pause after highlighting second card
+  const REPLAY_DELAY_BEFORE_MERGE = 200;   // tiny pause before cards merge
+  const REPLAY_POST_MERGE_BUFFER = 120;    // small buffer after merge settles
+
   const highlightStep = async (aId, op, bId) => {
-    // Make highlights feel almost immediate
     setSelected([aId]);
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, REPLAY_DELAY_FIRST_CARD));
     setSelectedOperator(op);
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, REPLAY_DELAY_OPERATOR));
     setSelected([aId, bId]);
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, REPLAY_DELAY_SECOND_CARD));
   };
 
   const performOperationAndWait = async ([aId, bId], op) => {
@@ -391,10 +397,12 @@ export default function App() {
         }
       }, MERGE_ANIMATION_DURATION + 400)
     );
+    // Tiny pause before triggering the actual merge to improve clarity
+    await new Promise((r) => setTimeout(r, REPLAY_DELAY_BEFORE_MERGE));
     performOperation([aId, bId], op);
     await Promise.race([waitPromise, timeoutPromise]);
     // Small buffer to settle
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, REPLAY_POST_MERGE_BUFFER));
   };
 
   const waitForMergeToFinish = async () => {
@@ -603,21 +611,21 @@ export default function App() {
         state.cards &&
         state.cards.length > 0
       ) {
+        // Keep waiting; don't restore a new active hand
+        setWaitingForOthersAfterWin(true);
         return;
       }
 
       if (state && state.cards && state.cards.length > 0) {
-        // If we receive a full hand for the new round, clear any lingering reveal
-        if (viewingRevealRef.current || revealLockRef.current) {
-          console.log("[CLIENT] state_sync: clearing lingering reveal for new round");
-          setViewingReveal(false);
-          viewingRevealRef.current = false;
-          revealLockRef.current = false;
-          lastRevealHandRef.current = null;
-          lastRevealOriginRef.current = null;
-          lastRevealExpiresAtRef.current = null;
-          setNoSolutionTimer(null);
-        }
+        console.log("[CLIENT] state_sync: clearing lingering reveal for new round");
+        setViewingReveal(false);
+        viewingRevealRef.current = false;
+        revealLockRef.current = false;
+        lastRevealHandRef.current = null;
+        lastRevealOriginRef.current = null;
+        lastRevealExpiresAtRef.current = null;
+        setNoSolutionTimer(null);
+
         // Restore my own original hand (used after no-solution expires / skip ends,
         // or when I solved someone else's no-solution challenge and should get my
         // original cards back).
