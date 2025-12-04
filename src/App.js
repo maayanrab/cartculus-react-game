@@ -370,7 +370,7 @@ export default function App() {
   const REPLAY_DELAY_OPERATOR = 500;       // pause after selecting operator
   const REPLAY_DELAY_SECOND_CARD = 350;    // pause after highlighting second card
   const REPLAY_DELAY_BEFORE_MERGE = 200;   // tiny pause before cards merge
-  const REPLAY_POST_MERGE_BUFFER = 120;    // small buffer after merge settles
+  const REPLAY_POST_MERGE_BUFFER = 500;    // small buffer after merge settles
 
   const highlightStep = async (aId, op, bId) => {
     setSelected([aId]);
