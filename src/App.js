@@ -38,6 +38,10 @@ export default function App() {
   const [replayPendingMoves, setReplayPendingMoves] = useState(null);
   const [isReplaying, setIsReplaying] = useState(false);
   const [frozenSolution, setFrozenSolution] = useState(null);
+  // Round replays (multiplayer post-round)
+  const [roundReplaysQueue, setRoundReplaysQueue] = useState(null);
+  const [isPlayingRoundReplays, setIsPlayingRoundReplays] = useState(false);
+  const [replaysBanner, setReplaysBanner] = useState("");
 
   // Multiplayer state
   const [multiplayerRoom, setMultiplayerRoom] = useState(null);
@@ -502,6 +506,8 @@ export default function App() {
       // reveal moment: stop waiting UI
       setWaitingForOthers(false);
       setWaitingForOthersAfterWin(false);
+      // Clear any temp backups from previous timers/replays to avoid skipping restores
+      tempHandBackupRef.current = null;
       const myId = socket.getSocketId();
       const myHand = (data.perPlayerHands && data.perPlayerHands[myId]) || [];
       // Play the entry animation for incoming multiplayer deal so clients
@@ -561,6 +567,8 @@ export default function App() {
         lastRevealExpiresAtRef.current = null;
         if (timerClearTimeoutRef.current) { try { clearTimeout(timerClearTimeoutRef.current); } catch {} timerClearTimeoutRef.current = null; }
         setNoSolutionTimer(null);
+        // Clear temp backups so state_sync can restore hands normally
+        tempHandBackupRef.current = null;
         const myHand = data.hand || [];
         // Load cards into state but keep them face-down (handCardsFlipped false, targetCardFlipped false)
         const finalCards = myHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
@@ -897,11 +905,25 @@ export default function App() {
     socket.on("pending_status", (payload) => {
       try {
         if (!payload) return;
+        // Suppress waiting overlay during replays phase
+        if (isPlayingRoundReplays) return;
         setPendingLoadedCount(payload.loadedCount || 0);
         setPendingTotalCount(payload.total || 0);
         setWaitingForOthers((payload.loadedCount || 0) < (payload.total || 0));
       } catch (e) {
         console.error("error handling pending_status", e);
+      }
+    });
+
+    // Round replays broadcast from server (multiplayer post-round)
+    socket.on("round_replays", (data) => {
+      try {
+        if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
+        // Items already enriched with names/headers by server
+        setRoundReplaysQueue(data.items);
+        playRoundReplaysSequentially(data.items);
+      } catch (e) {
+        console.error("error handling round_replays", e);
       }
     });
 
@@ -1366,6 +1388,127 @@ export default function App() {
     setGameStarted(true);
   };
 
+  // Helper: wait until entry animations complete and target is visible
+  const waitForEntryAnimationsToFinish = async () => {
+    const maxWaitMs = 5000;
+    const poll = 30;
+    let waited = 0;
+    while ((isReshuffling || newCardsAnimatingIn || !targetCardFlipped) && waited < maxWaitMs) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, poll));
+      waited += poll;
+    }
+    // settle
+    await new Promise((r) => setTimeout(r, 100));
+  };
+
+  // Helper: ensure a replay item has fully finished (no animations/merges running)
+  const waitForReplayIdle = async () => {
+    const maxWaitMs = 8000;
+    const poll = 30;
+    let waited = 0;
+    // Wait until no replay is active, no merges flying, no entry animations
+    while (
+      (isReplayingRef.current || flyingCardInfoRef.current || isReshuffling || newCardsAnimatingIn) &&
+      waited < maxWaitMs
+    ) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, poll));
+      waited += poll;
+    }
+    // settle a touch more
+    await new Promise((r) => setTimeout(r, 100));
+  };
+
+  // --- Round replays helpers (multiplayer) ---
+  const playSolutionShowcase = async (solution) => {
+    try {
+      if (!solution || !Array.isArray(solution.c) || !Array.isArray(solution.m)) return;
+      // Full showcase: load starting 4-card hand, then replay all moves to reach target
+      const hand = solution.c.map((v, i) => ({ id: `replay-${Date.now()}-${i}-${Math.random()}`, value: v }));
+      await playIncomingDeal(hand, solution.t);
+      await waitForEntryAnimationsToFinish();
+      setReplaysBanner("");
+      await replaySolution(solution.m);
+      await new Promise((r) => setTimeout(r, 800));
+    } catch (e) {
+      console.error("playSolutionShowcase failed", e);
+    }
+  };
+
+  const playNoSolutionShowcase = async (entry) => {
+    try {
+      const hand = Array.isArray(entry.originHand)
+        ? entry.originHand.map((c, i) => ({ id: c.id || `nos-${Date.now()}-${i}`, value: c.value }))
+        : [];
+      if (hand.length > 0) {
+        await playIncomingDeal(hand, currentRoundTarget || target);
+        await waitForEntryAnimationsToFinish();
+      }
+      setReplaysBanner("No solution was found");
+      await new Promise((r) => setTimeout(r, 1800));
+    } catch (e) {
+      console.error("playNoSolutionShowcase failed", e);
+    }
+  };
+
+  const clearShowcaseBoard = async () => {
+    setCards([]);
+    setOriginalCards([]);
+    setSelected([]);
+    setSelectedOperator(null);
+    setHistory([]);
+    await new Promise((r) => setTimeout(r, 200));
+  };
+
+  const playRoundReplaysSequentially = async (items) => {
+    if (!Array.isArray(items)) return;
+    setIsPlayingRoundReplays(true);
+    setWaitingForOthers(false);
+    setWaitingForOthersAfterWin(false);
+    // Ensure no reveal guard UI interferes while showcasing
+    setViewingReveal(false);
+    revealLockRef.current = false;
+    // Prevent any previous replay loop from triggering during showcases
+    replayInitialCardsRef.current = null;
+    replayInitialTargetRef.current = null;
+    setReplayPendingMoves(null);
+    for (const item of items) {
+      try {
+        if (item.type === "solution" && item.solution) {
+          // Prefer precomputed header if available to avoid race conditions
+          const header = item.header || "";
+          setReplaysBanner(header);
+          await new Promise((r) => setTimeout(r, 400));
+          await playSolutionShowcase(item.solution);
+          await waitForReplayIdle();
+        } else if (item.type === "no_solution") {
+          const header = item.header || "";
+          setReplaysBanner(header);
+          await new Promise((r) => setTimeout(r, 400));
+          await playNoSolutionShowcase(item);
+          await waitForReplayIdle();
+        }
+      } catch (e) {
+        console.error("error during round replay item", e);
+      }
+      await clearShowcaseBoard();
+    }
+    setReplaysBanner("");
+    setIsPlayingRoundReplays(false);
+    // Ack to server that this client finished watching replays
+    try {
+      const myId = socket.getSocketId();
+      if (multiplayerRoom && myId) {
+        socket.emitReplaysComplete(multiplayerRoom, myId);
+      }
+    } catch (e) {
+      console.error("emitReplaysComplete failed", e);
+    }
+    // After ack, show waiting UI until next deal arrives
+    setWaitingForOthers(true);
+  };
+
   const getCardExitStyle = (cardCenter, screenCenterElement) => {
     if (!cardCenter || !screenCenterElement) return {};
     const screenRect = screenCenterElement.getBoundingClientRect();
@@ -1452,7 +1595,10 @@ export default function App() {
         if (multiplayerRoom) {
           try {
             const myId = socket.getSocketId();
-            socket.emitPlayMove(multiplayerRoom, myId, { type: "win" });
+            const solutionPayload = (frozenSolution && frozenSolution.c && frozenSolution.t && Array.isArray(frozenSolution.m))
+              ? frozenSolution
+              : { c: originalCards.map((c) => c.value), t: target, m: solutionMoves.slice() };
+            socket.emitPlayMove(multiplayerRoom, myId, { type: "win", solution: solutionPayload });
           } catch (e) {
             console.error("emit play_move failed", e);
           }
@@ -1493,7 +1639,7 @@ export default function App() {
 
   const handleCardClick = (id) => {
     if (!gameStarted) return; // Keep this basic game state check
-    if (isReplaying) return;
+    if (isReplaying || isPlayingRoundReplays) return;
 
     const clickedCard = cards.find((c) => c.id === id);
     if (!clickedCard || clickedCard.isPlaceholder || clickedCard.invisible)
@@ -1510,7 +1656,7 @@ export default function App() {
   };
 
   const handleOperatorSelect = (op) => {
-    if (isReplaying) return;
+    if (isReplaying || isPlayingRoundReplays) return;
     // Disable operators for origin during active no-solution (only for origin)
     {
       const myId = socket.getSocketId();
@@ -2061,17 +2207,24 @@ export default function App() {
         CartCulus
       </h1>
       <h5 className="text-start text-sm-center">
-        {currentMode === "solution"
+        {isPlayingRoundReplays
+          ? "Round Replay"
+          : currentMode === "solution"
           ? "Solution Replay"
           : currentMode === "riddle"
           ? "Riddle"
-          : multiplayerRoom ? "Multiplayer"
-          : "Solo"
-        }
+          : multiplayerRoom
+          ? "Multiplayer"
+          : "Solo"}
       </h5>
 
       {gameStarted && (
         <>
+          {isPlayingRoundReplays && (
+            <div className="text-center mt-2" style={{ zIndex: 1200 }}>
+              <span className="badge bg-secondary">{replaysBanner || ""}</span>
+            </div>
+          )}
           {/* Show finished player count in multiplayer */}
           {multiplayerRoom && activeCount > 0 && (
             <div className="text-center mt-3 mb-2">
@@ -2239,12 +2392,25 @@ export default function App() {
             const myId = socket.getSocketId();
             const originId = (noSolutionTimer && noSolutionTimer.originPlayerId) || null;
             const originActiveAndIsOrigin = originNoSolutionActive && myId && originId && myId === originId;
+            // During round replays, always show the boxed mini-board with a clear header
+            const shouldShowBox = isPlayingRoundReplays || showingOriginHand || showingRevealHand;
+            // Compute replay header if in replays phase
+            let replayHeader = null;
+            if (isPlayingRoundReplays) {
+              // Use the current banner text as the header; it is computed per item
+              replayHeader = replaysBanner || "";
+            }
             return (
-              <div className={`${(showingOriginHand || showingRevealHand) ? "player-cards-highlight" : "container"} ${originActiveAndIsOrigin ? "cards-disabled" : ""}`}>
-                {(showingOriginHand || showingRevealHand) && (() => {
+              <div className={`${shouldShowBox ? "player-cards-highlight" : "container"} ${originActiveAndIsOrigin ? "cards-disabled" : ""}`}>
+                {(shouldShowBox) && (() => {
                   const originId = (noSolutionTimer && noSolutionTimer.originPlayerId) || lastRevealOriginRef.current;
                   const originPlayer = players.find(p => p.playerId === originId);
-                  const label = originPlayer && originPlayer.name ? `${originPlayer.name}'s cards` : "Player's cards";
+                  // If in round replays, prefer the computed replayHeader
+                  const label = isPlayingRoundReplays && replayHeader
+                    ? replayHeader
+                    : originPlayer && originPlayer.name
+                      ? `${originPlayer.name}'s hand`
+                      : "Player's hand";
                   return (
                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
                       <span className="player-cards-name">{label}</span>
@@ -2301,6 +2467,7 @@ export default function App() {
                               !card.isPlaceholder &&
                               !card.invisible &&
                               !originActiveAndIsOrigin &&
+                              !isPlayingRoundReplays &&
                               (flyingCardInfo ? flyingCardInfo.id !== card.id : true)
                               ? () => handleCardClick(card.id)
                               : undefined
@@ -2368,7 +2535,8 @@ export default function App() {
               isReshuffling ||
               newCardsAnimatingIn ||
               !gameStarted ||
-              flyingCardInfo
+              flyingCardInfo ||
+              isPlayingRoundReplays
             }
           >
             <img src={src} alt={op} className="operator-img" title={op} />

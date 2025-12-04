@@ -25,6 +25,11 @@ class Rooms {
         pendingDealLoaded: null,
         pendingDealTimeout: null,
         autoNextRoundTimeout: null, // NEW: used by server to avoid double-scheduling
+        // Replays state for current round
+        roundReplays: [],
+        roundReplaysBroadcasted: false,
+        replayAcks: null,
+        replaysWaitTimeout: null,
       });
     }
     return this.rooms.get(id);
@@ -157,6 +162,14 @@ class Rooms {
     }
 
     room.deal = { perPlayerHands, target, seed: null };
+    // Reset round replays state for the new round
+    room.roundReplays = [];
+    room.roundReplaysBroadcasted = false;
+    room.replayAcks = null;
+    if (room.replaysWaitTimeout) {
+      clearTimeout(room.replaysWaitTimeout);
+      room.replaysWaitTimeout = null;
+    }
     return { publicDeal: { target, perPlayerHands } };
   }
 
@@ -317,6 +330,17 @@ class Rooms {
           points: pts,
         },
       });
+      // Record a replay entry for no-solution timeout award
+      try {
+        room.roundReplays = room.roundReplays || [];
+        room.roundReplays.push({
+          type: "no_solution",
+          originPlayerId,
+          originHand,
+          method: "timeout",
+          ts: Date.now(),
+        });
+      } catch {}
     }, duration);
 
     cb({
@@ -392,7 +416,7 @@ class Rooms {
 
     room.noSolution = null;
 
-    return {
+    const result = {
       awardedTo: originPlayerId,
       broadcast: {
         originPlayerId,
@@ -402,6 +426,18 @@ class Rooms {
         points: pts,
       },
     };
+    // Record a replay entry for accepted no-solution by skip
+    try {
+      room.roundReplays = room.roundReplays || [];
+      room.roundReplays.push({
+        type: "no_solution",
+        originPlayerId,
+        originHand,
+        method: "skip",
+        ts: Date.now(),
+      });
+    } catch {}
+    return result;
   }
 
   // Reveal timer – controls a 45s window where the last player can still solve.
