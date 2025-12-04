@@ -187,6 +187,13 @@ export default function App() {
     noSolutionTimerRef.current = noSolutionTimer;
   }, [noSolutionTimer]);
 
+  // In Solution Replay mode, force Auto-reshuffle OFF and keep it disabled
+  useEffect(() => {
+    if (currentMode === "solution" && autoReshuffle) {
+      setAutoReshuffle(false);
+    }
+  }, [currentMode, autoReshuffle]);
+
   // While reveal is active, never show "waiting" UI that could hide cards
   useEffect(() => {
     if (viewingRevealRef.current && waitingForOthersAfterWin) {
@@ -2029,6 +2036,7 @@ export default function App() {
             onClick={() => setAutoReshuffle(!autoReshuffle)}
             aria-label="Toggle auto-reshuffle"
             title="Toggle auto-reshuffle"
+            disabled={currentMode === "solution"}
           >
             <img
               src={autoReshuffle ? "./images/reshuffle-toggle-on.png" : "./images/reshuffle-toggle-off.png"}
@@ -2105,7 +2113,11 @@ export default function App() {
                   className="img-button reshuffle-btn"
                   onClick={() => startNewRound(true)}
                   disabled={
-                    isReshuffling || newCardsAnimatingIn || !gameStarted || isReplaying
+                    isReshuffling ||
+                    newCardsAnimatingIn ||
+                    !gameStarted ||
+                    isReplaying ||
+                    currentMode === "solution"
                   }
                 >
                   <img src="./images/reshuffle-button.png" alt="Reshuffle" title="Reshuffle" />
