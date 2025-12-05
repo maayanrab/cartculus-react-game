@@ -42,6 +42,8 @@ export default function App() {
   const [roundReplaysQueue, setRoundReplaysQueue] = useState(null);
   const [isPlayingRoundReplays, setIsPlayingRoundReplays] = useState(false);
   const [replaysBanner, setReplaysBanner] = useState("");
+  const replaysRoundTargetRef = useRef(null);
+  const currentReplayHeaderRef = useRef("");
 
   // Multiplayer state
   const [multiplayerRoom, setMultiplayerRoom] = useState(null);
@@ -1426,7 +1428,8 @@ export default function App() {
       if (!solution || !Array.isArray(solution.c) || !Array.isArray(solution.m)) return;
       // Full showcase: load starting 4-card hand, then replay all moves to reach target
       const hand = solution.c.map((v, i) => ({ id: `replay-${Date.now()}-${i}-${Math.random()}`, value: v }));
-      await playIncomingDeal(hand, solution.t);
+      const t = (solution && solution.t != null) ? solution.t : replaysRoundTargetRef.current;
+      await playIncomingDeal(hand, t);
       await waitForEntryAnimationsToFinish();
       setReplaysBanner("");
       await replaySolution(solution.m);
@@ -1442,7 +1445,8 @@ export default function App() {
         ? entry.originHand.map((c, i) => ({ id: c.id || `nos-${Date.now()}-${i}`, value: c.value }))
         : [];
       if (hand.length > 0) {
-        await playIncomingDeal(hand, currentRoundTarget || target);
+        const t = replaysRoundTargetRef.current || currentRoundTarget || target;
+        await playIncomingDeal(hand, t);
         await waitForEntryAnimationsToFinish();
       }
       setReplaysBanner("No solution was found");
@@ -1469,44 +1473,60 @@ export default function App() {
     // Ensure no reveal guard UI interferes while showcasing
     setViewingReveal(false);
     revealLockRef.current = false;
+    // Lock round target for consistent display across all items
+    replaysRoundTargetRef.current = currentRoundTarget || target;
     // Prevent any previous replay loop from triggering during showcases
     replayInitialCardsRef.current = null;
     replayInitialTargetRef.current = null;
     setReplayPendingMoves(null);
-    for (const item of items) {
+    let ackEmitted = false;
+    try {
+      for (const item of items) {
+        try {
+          if (item.type === "solution" && item.solution) {
+            // Prefer precomputed header if available to avoid race conditions
+            const header = item.header || "";
+            setReplaysBanner(header);
+            currentReplayHeaderRef.current = header;
+            await new Promise((r) => setTimeout(r, 400));
+            await playSolutionShowcase(item.solution);
+            await waitForReplayIdle();
+          } else if (item.type === "no_solution") {
+            const header = item.header || "";
+            setReplaysBanner(header);
+            currentReplayHeaderRef.current = header;
+            await new Promise((r) => setTimeout(r, 400));
+            await playNoSolutionShowcase(item);
+            await waitForReplayIdle();
+          }
+        } catch (e) {
+          console.error("error during round replay item", e);
+        }
+        await clearShowcaseBoard();
+      }
+    } finally {
+      setReplaysBanner("");
+      currentReplayHeaderRef.current = "";
+      setIsPlayingRoundReplays(false);
+      // Ack to server that this client finished watching replays (defensive)
       try {
-        if (item.type === "solution" && item.solution) {
-          // Prefer precomputed header if available to avoid race conditions
-          const header = item.header || "";
-          setReplaysBanner(header);
-          await new Promise((r) => setTimeout(r, 400));
-          await playSolutionShowcase(item.solution);
-          await waitForReplayIdle();
-        } else if (item.type === "no_solution") {
-          const header = item.header || "";
-          setReplaysBanner(header);
-          await new Promise((r) => setTimeout(r, 400));
-          await playNoSolutionShowcase(item);
-          await waitForReplayIdle();
+        const myId = socket.getSocketId();
+        if (multiplayerRoom && myId) {
+          socket.emitReplaysComplete(multiplayerRoom, myId);
+          ackEmitted = true;
         }
       } catch (e) {
-        console.error("error during round replay item", e);
+        console.error("emitReplaysComplete failed", e);
       }
-      await clearShowcaseBoard();
+      // After ack, clear any reveal caches and show waiting UI until next deal arrives
+      viewingRevealRef.current = false;
+      setViewingReveal(false);
+      lastRevealHandRef.current = null;
+      lastRevealOriginRef.current = null;
+      lastRevealExpiresAtRef.current = null;
+      setNoSolutionTimer(null);
+      setWaitingForOthers(true);
     }
-    setReplaysBanner("");
-    setIsPlayingRoundReplays(false);
-    // Ack to server that this client finished watching replays
-    try {
-      const myId = socket.getSocketId();
-      if (multiplayerRoom && myId) {
-        socket.emitReplaysComplete(multiplayerRoom, myId);
-      }
-    } catch (e) {
-      console.error("emitReplaysComplete failed", e);
-    }
-    // After ack, show waiting UI until next deal arrives
-    setWaitingForOthers(true);
   };
 
   const getCardExitStyle = (cardCenter, screenCenterElement) => {
@@ -2074,7 +2094,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {(noSolutionTimer || (viewingRevealRef.current && lastRevealHandRef.current && lastRevealOriginRef.current)) && (
+      {!isPlayingRoundReplays && (noSolutionTimer || (viewingRevealRef.current && lastRevealHandRef.current && lastRevealOriginRef.current)) && (
         <NoSolutionTimer
           timer={noSolutionTimer || {
             type: "reveal",
@@ -2220,13 +2240,9 @@ export default function App() {
 
       {gameStarted && (
         <>
-          {isPlayingRoundReplays && (
-            <div className="text-center mt-2" style={{ zIndex: 1200 }}>
-              <span className="badge bg-secondary">{replaysBanner || ""}</span>
-            </div>
-          )}
+          {/* Omit top-of-page replay banner to avoid clutter; headers render inside the boxed mini-board */}
           {/* Show finished player count in multiplayer */}
-          {multiplayerRoom && activeCount > 0 && (
+          {multiplayerRoom && activeCount > 0 && !isPlayingRoundReplays && (
             <div className="text-center mt-3 mb-2">
               <span className="badge bg-secondary">Finished players: {finishedCount}/{activeCount}</span>
             </div>
@@ -2393,7 +2409,7 @@ export default function App() {
             const originId = (noSolutionTimer && noSolutionTimer.originPlayerId) || null;
             const originActiveAndIsOrigin = originNoSolutionActive && myId && originId && myId === originId;
             // During round replays, always show the boxed mini-board with a clear header
-            const shouldShowBox = isPlayingRoundReplays || showingOriginHand || showingRevealHand;
+            const shouldShowBox = (isPlayingRoundReplays && cards.length > 0) || showingOriginHand || showingRevealHand;
             // Compute replay header if in replays phase
             let replayHeader = null;
             if (isPlayingRoundReplays) {
@@ -2406,19 +2422,19 @@ export default function App() {
                   const originId = (noSolutionTimer && noSolutionTimer.originPlayerId) || lastRevealOriginRef.current;
                   const originPlayer = players.find(p => p.playerId === originId);
                   // If in round replays, prefer the computed replayHeader
-                  const label = isPlayingRoundReplays && replayHeader
-                    ? replayHeader
+                  const label = isPlayingRoundReplays && (currentReplayHeaderRef.current || replayHeader)
+                    ? (currentReplayHeaderRef.current || replayHeader)
                     : originPlayer && originPlayer.name
                       ? `${originPlayer.name}'s hand`
-                      : "Player's hand";
+                      : "";
                   return (
                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
-                      <span className="player-cards-name">{label}</span>
+                      {label ? (<span className="player-cards-name">{label}</span>) : null}
                     </div>
                   );
                 })()}
             <div className="row justify-content-center gx-3 gy-3 position-relative">
-              {waitingForOthersAfterWin && !viewingReveal && !originActiveAndIsOrigin && (
+              {waitingForOthersAfterWin && !viewingReveal && !originActiveAndIsOrigin && !isPlayingRoundReplays && (
                 <div className="col-12">
                   <div className="alert alert-info mt-4">Waiting for other players...</div>
                 </div>
