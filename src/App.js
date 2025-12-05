@@ -1441,13 +1441,23 @@ export default function App() {
 
   const playNoSolutionShowcase = async (entry) => {
     try {
+      // Always lock and show the round target
+      const t = replaysRoundTargetRef.current || currentRoundTarget || target;
       const hand = Array.isArray(entry.originHand)
         ? entry.originHand.map((c, i) => ({ id: c.id || `nos-${Date.now()}-${i}`, value: c.value }))
         : [];
+
+      // Show the origin player's four cards if available, with standard entry animation
       if (hand.length > 0) {
-        const t = replaysRoundTargetRef.current || currentRoundTarget || target;
         await playIncomingDeal(hand, t);
         await waitForEntryAnimationsToFinish();
+      } else {
+        // Even if origin hand is missing, ensure target is visible and board is cleared
+        setTarget(t);
+        setCurrentRoundTarget(t);
+        setCards([]);
+        setOriginalCards([]);
+        await new Promise((r) => setTimeout(r, 200));
       }
       setReplaysBanner("No solution was found");
       await new Promise((r) => setTimeout(r, 1800));
