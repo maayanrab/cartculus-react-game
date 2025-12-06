@@ -44,6 +44,8 @@ export default function App() {
   const [replaysBanner, setReplaysBanner] = useState("");
   const replaysRoundTargetRef = useRef(null);
   const currentReplayHeaderRef = useRef("");
+  const roundReplaysSessionIdRef = useRef(0);
+  const roundReplaysDoneRef = useRef(false);
 
   // Multiplayer state
   const [multiplayerRoom, setMultiplayerRoom] = useState(null);
@@ -377,6 +379,7 @@ export default function App() {
   const REPLAY_DELAY_SECOND_CARD = 350;    // pause after highlighting second card
   const REPLAY_DELAY_BEFORE_MERGE = 200;   // tiny pause before cards merge
   const REPLAY_POST_MERGE_BUFFER = 500;    // small buffer after merge settles
+  const REPLAY_PRE_ITEM_DELAY = 120;       // short pause before starting each replay item
 
   const highlightStep = async (aId, op, bId) => {
     setSelected([aId]);
@@ -508,6 +511,8 @@ export default function App() {
       // reveal moment: stop waiting UI
       setWaitingForOthers(false);
       setWaitingForOthersAfterWin(false);
+      // Reset replays done flag for the new round
+      roundReplaysDoneRef.current = false;
       // Clear any temp backups from previous timers/replays to avoid skipping restores
       tempHandBackupRef.current = null;
       const myId = socket.getSocketId();
@@ -569,6 +574,8 @@ export default function App() {
         lastRevealExpiresAtRef.current = null;
         if (timerClearTimeoutRef.current) { try { clearTimeout(timerClearTimeoutRef.current); } catch {} timerClearTimeoutRef.current = null; }
         setNoSolutionTimer(null);
+        // Reset replays done flag for the incoming round
+        roundReplaysDoneRef.current = false;
         // Clear temp backups so state_sync can restore hands normally
         tempHandBackupRef.current = null;
         const myHand = data.hand || [];
@@ -921,9 +928,16 @@ export default function App() {
     socket.on("round_replays", (data) => {
       try {
         if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
+        // Ignore duplicate broadcasts if we're already playing or have completed this round's replays
+        if (isPlayingRoundReplays || roundReplaysDoneRef.current) {
+          console.log("[CLIENT] round_replays ignored (already playing/done)");
+          return;
+        }
         // Items already enriched with names/headers by server
         setRoundReplaysQueue(data.items);
-        playRoundReplaysSequentially(data.items);
+        // Start a new replays session; used to prevent accidental re-entry
+        roundReplaysSessionIdRef.current += 1;
+        playRoundReplaysSequentially(data.items, roundReplaysSessionIdRef.current);
       } catch (e) {
         console.error("error handling round_replays", e);
       }
@@ -1400,8 +1414,8 @@ export default function App() {
       await new Promise((r) => setTimeout(r, poll));
       waited += poll;
     }
-    // settle
-    await new Promise((r) => setTimeout(r, 100));
+    // settle (shortened)
+    await new Promise((r) => setTimeout(r, 50));
   };
 
   // Helper: ensure a replay item has fully finished (no animations/merges running)
@@ -1442,21 +1456,37 @@ export default function App() {
   const playNoSolutionShowcase = async (entry) => {
     try {
       // Always lock and show the round target
-      const t = replaysRoundTargetRef.current || currentRoundTarget || target;
+      const tRaw = replaysRoundTargetRef.current || currentRoundTarget || target;
+      const t = (typeof tRaw === "number" && Number.isFinite(tRaw)) ? tRaw : Number(tRaw);
+      // If target couldn't be resolved to a finite number, skip showing target but proceed with message
       const hand = Array.isArray(entry.originHand)
         ? entry.originHand.map((c, i) => ({ id: c.id || `nos-${Date.now()}-${i}`, value: c.value }))
         : [];
 
       // Show the origin player's four cards if available, with standard entry animation
       if (hand.length > 0) {
-        await playIncomingDeal(hand, t);
+        if (Number.isFinite(t)) {
+          await playIncomingDeal(hand, t);
+        } else {
+          // Show hand even if target is missing; target will be set below if possible
+          await playIncomingDeal(hand, currentRoundTarget || target);
+        }
         await waitForEntryAnimationsToFinish();
+        // Ensure the locked target is visible during the showcase
+        if (Number.isFinite(t)) {
+          setTarget(t);
+          setCurrentRoundTarget(t);
+        }
+        setTargetCardFlipped(true);
       } else {
         // Even if origin hand is missing, ensure target is visible and board is cleared
-        setTarget(t);
-        setCurrentRoundTarget(t);
+        if (Number.isFinite(t)) {
+          setTarget(t);
+          setCurrentRoundTarget(t);
+        }
         setCards([]);
         setOriginalCards([]);
+        setTargetCardFlipped(true);
         await new Promise((r) => setTimeout(r, 200));
       }
       setReplaysBanner("No solution was found");
@@ -1475,7 +1505,7 @@ export default function App() {
     await new Promise((r) => setTimeout(r, 200));
   };
 
-  const playRoundReplaysSequentially = async (items) => {
+  const playRoundReplaysSequentially = async (items, sessionId) => {
     if (!Array.isArray(items)) return;
     setIsPlayingRoundReplays(true);
     setWaitingForOthers(false);
@@ -1492,20 +1522,22 @@ export default function App() {
     let ackEmitted = false;
     try {
       for (const item of items) {
+        // If a newer session has started, abort this sequence
+        if (sessionId !== roundReplaysSessionIdRef.current) break;
         try {
           if (item.type === "solution" && item.solution) {
             // Prefer precomputed header if available to avoid race conditions
             const header = item.header || "";
             setReplaysBanner(header);
             currentReplayHeaderRef.current = header;
-            await new Promise((r) => setTimeout(r, 400));
+            await new Promise((r) => setTimeout(r, REPLAY_PRE_ITEM_DELAY));
             await playSolutionShowcase(item.solution);
             await waitForReplayIdle();
           } else if (item.type === "no_solution") {
             const header = item.header || "";
             setReplaysBanner(header);
             currentReplayHeaderRef.current = header;
-            await new Promise((r) => setTimeout(r, 400));
+            await new Promise((r) => setTimeout(r, REPLAY_PRE_ITEM_DELAY));
             await playNoSolutionShowcase(item);
             await waitForReplayIdle();
           }
@@ -1518,6 +1550,8 @@ export default function App() {
       setReplaysBanner("");
       currentReplayHeaderRef.current = "";
       setIsPlayingRoundReplays(false);
+      // Mark replays as complete for this round to avoid duplicate runs
+      roundReplaysDoneRef.current = true;
       // Ack to server that this client finished watching replays (defensive)
       try {
         const myId = socket.getSocketId();
@@ -1598,6 +1632,10 @@ export default function App() {
   }, [replayPendingMoves, isReshuffling, newCardsAnimatingIn, targetCardFlipped, isReplaying]);
 
   useEffect(() => {
+    // Do not trigger live win-handling during solution or round replays
+    if (isReplaying || isPlayingRoundReplays) {
+      return;
+    }
     if (
       !isReshuffling &&
       !newCardsAnimatingIn &&

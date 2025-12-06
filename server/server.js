@@ -142,7 +142,7 @@ function scheduleNewRoundIfAllWaiting(roomId) {
           if (!rr) return;
           rr.replaysWaitTimeout = null;
           startNewRoundForRoom(roomId);
-        }, 20000);
+        }, 12000);
       } catch (e) {
         console.error("error broadcasting round_replays", e);
         startNewRoundForRoom(roomId);
