@@ -110,12 +110,6 @@ function scheduleNewRoundIfAllWaiting(roomId) {
       try {
         r.roundReplaysBroadcasted = true;
         r.replayAcks = new Set();
-        // Track audience expected to ack: only ACTIVE players for this round
-        r.replayAudience = new Set(
-          Array.from(r.players.values())
-            .filter(p => p.isActiveInRound)
-            .map(p => p.playerId)
-        );
         // Build a stable snapshot of player names to avoid client race conditions
         const idToName = {};
         for (const p of r.players.values()) {
@@ -142,7 +136,7 @@ function scheduleNewRoundIfAllWaiting(roomId) {
           if (!rr) return;
           rr.replaysWaitTimeout = null;
           startNewRoundForRoom(roomId);
-        }, 12000);
+        }, 20000);
       } catch (e) {
         console.error("error broadcasting round_replays", e);
         startNewRoundForRoom(roomId);
@@ -643,17 +637,14 @@ try {
       if (!room.roundReplaysBroadcasted) return;
       room.replayAcks = room.replayAcks || new Set();
       room.replayAcks.add(playerId);
-      const audience = room.replayAudience ? room.replayAudience.size : room.players.size;
-      const expectedSet = room.replayAudience || new Set(Array.from(room.players.values()).map(p => p.playerId));
+      const total = room.players.size;
       const acked = room.replayAcks.size;
-      console.log("[EVENT] client_replays_complete", { roomId, playerId, acked, audience });
-      if (acked >= audience) {
+      console.log("[EVENT] client_replays_complete", { roomId, playerId, acked, total });
+      if (acked >= total) {
         if (room.replaysWaitTimeout) {
           clearTimeout(room.replaysWaitTimeout);
           room.replaysWaitTimeout = null;
         }
-        // Clear audience state for next round
-        room.replayAudience = null;
         startNewRoundForRoom(roomId);
       }
     } catch (e) {
