@@ -1581,14 +1581,17 @@ export default function App() {
       } catch (e) {
         console.error("emitReplaysComplete failed", e);
       }
-      // After ack, clear any reveal caches and show waiting UI until next deal arrives
+      // After ack, clear any reveal caches and let server control waiting state
       viewingRevealRef.current = false;
       setViewingReveal(false);
       lastRevealHandRef.current = null;
       lastRevealOriginRef.current = null;
       lastRevealExpiresAtRef.current = null;
       setNoSolutionTimer(null);
-      setWaitingForOthers(true);
+      // Reset pending counts so they'll be repopulated by the next pending_status from server
+      setPendingLoadedCount(0);
+      setPendingTotalCount(0);
+      // Don't set waitingForOthers here - let the server's pending_status event control it
     }
   }
 // Defensive: If stuck on waiting for others to load, emit deal_loaded after 7 seconds
