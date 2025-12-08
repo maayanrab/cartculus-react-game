@@ -1456,7 +1456,7 @@ export default function App() {
 
   const playNoSolutionShowcase = async (entry) => {
     try {
-      // Defensive: always resolve a valid target for the showcase
+      // Defensive: always resolve a valid target for the showcase, log if missing
       let tRaw = entry.target;
       if (typeof tRaw === "undefined" || tRaw === null) {
         tRaw = replaysRoundTargetRef.current || currentRoundTarget || target;
@@ -1467,7 +1467,10 @@ export default function App() {
         t = [replaysRoundTargetRef.current, currentRoundTarget, target].find(Number.isFinite);
       }
       // If still not valid, forcibly set to 24 (default game target)
-      if (!Number.isFinite(t)) t = 24;
+      if (!Number.isFinite(t)) {
+        console.warn("NoSolutionShowcase missing valid target, using fallback 24", entry);
+        t = 24;
+      }
 
       const hand = Array.isArray(entry.originHand)
         ? entry.originHand.map((c, i) => ({ id: c.id || `nos-${Date.now()}-${i}`, value: c.value }))
@@ -1536,15 +1539,21 @@ export default function App() {
             currentReplayHeaderRef.current = header;
             await new Promise((r) => setTimeout(r, REPLAY_PRE_ITEM_DELAY));
 
+            // Defensive: always use the target from the replay item, log if missing
+            let replayTarget = (typeof item.target === "number" && Number.isFinite(item.target)) ? item.target : 24;
+            if (!(typeof item.target === "number" && Number.isFinite(item.target))) {
+              console.warn("Replay item missing valid target, using fallback 24", item);
+            }
+
             if (item.solverInfo) {
               // This hand was solved - show solution replay
               await playSolutionShowcase(item.solverInfo.solution);
             } else if (item.noSolutionMethod) {
               // This hand was not solved - show no-solution showcase
-              await playNoSolutionShowcase({ originHand: item.originHand, target: item.target });
+              await playNoSolutionShowcase({ originHand: item.originHand, target: replayTarget });
             } else {
               // Hand belongs to current player (solver) - just show hand with no moves
-              await playIncomingDeal(item.originHand, replaysRoundTargetRef.current);
+              await playIncomingDeal(item.originHand, replayTarget);
               await waitForEntryAnimationsToFinish();
             }
 
@@ -1581,7 +1590,19 @@ export default function App() {
       setNoSolutionTimer(null);
       setWaitingForOthers(true);
     }
-  };
+  }
+// Defensive: If stuck on waiting for others to load, emit deal_loaded after 7 seconds
+useEffect(() => {
+    if (waitingForOthers && !isPlayingRoundReplays) {
+      const timeout = setTimeout(() => {
+        if (waitingForOthers && !isPlayingRoundReplays) {
+          console.warn("Forcing deal_loaded emit after timeout");
+          try { socket.emitDealLoaded && socket.emitDealLoaded(multiplayerRoom); } catch (e) { console.error("emitDealLoaded failed", e); }
+        }
+      }, 7000);
+      return () => clearTimeout(timeout);
+    }
+  }, [waitingForOthers, isPlayingRoundReplays, multiplayerRoom]);
 
   const getCardExitStyle = (cardCenter, screenCenterElement) => {
     if (!cardCenter || !screenCenterElement) return {};
