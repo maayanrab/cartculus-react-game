@@ -42,6 +42,11 @@ export default function App() {
   const [roundReplaysQueue, setRoundReplaysQueue] = useState(null);
   const [isPlayingRoundReplays, setIsPlayingRoundReplays] = useState(false);
   const [replaysBanner, setReplaysBanner] = useState("");
+  const [noSolutionMessageShowing, setNoSolutionMessageShowing] = useState(false);
+  const replaysRoundTargetRef = useRef(null);
+  const currentReplayHeaderRef = useRef("");
+  const roundReplaysSessionIdRef = useRef(0);
+  const roundReplaysDoneRef = useRef(false);
 
   // Multiplayer state
   const [multiplayerRoom, setMultiplayerRoom] = useState(null);
@@ -375,6 +380,7 @@ export default function App() {
   const REPLAY_DELAY_SECOND_CARD = 350;    // pause after highlighting second card
   const REPLAY_DELAY_BEFORE_MERGE = 200;   // tiny pause before cards merge
   const REPLAY_POST_MERGE_BUFFER = 500;    // small buffer after merge settles
+  const REPLAY_PRE_ITEM_DELAY = 50;        // minimal pause before starting each replay item (optimized for fast start)
 
   const highlightStep = async (aId, op, bId) => {
     setSelected([aId]);
@@ -506,6 +512,8 @@ export default function App() {
       // reveal moment: stop waiting UI
       setWaitingForOthers(false);
       setWaitingForOthersAfterWin(false);
+      // Reset replays done flag for the new round
+      roundReplaysDoneRef.current = false;
       // Clear any temp backups from previous timers/replays to avoid skipping restores
       tempHandBackupRef.current = null;
       const myId = socket.getSocketId();
@@ -567,6 +575,8 @@ export default function App() {
         lastRevealExpiresAtRef.current = null;
         if (timerClearTimeoutRef.current) { try { clearTimeout(timerClearTimeoutRef.current); } catch {} timerClearTimeoutRef.current = null; }
         setNoSolutionTimer(null);
+        // Reset replays done flag for the incoming round
+        roundReplaysDoneRef.current = false;
         // Clear temp backups so state_sync can restore hands normally
         tempHandBackupRef.current = null;
         const myHand = data.hand || [];
@@ -919,9 +929,16 @@ export default function App() {
     socket.on("round_replays", (data) => {
       try {
         if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
+        // Ignore duplicate broadcasts if we're already playing or have completed this round's replays
+        if (isPlayingRoundReplays || roundReplaysDoneRef.current) {
+          console.log("[CLIENT] round_replays ignored (already playing/done)");
+          return;
+        }
         // Items already enriched with names/headers by server
         setRoundReplaysQueue(data.items);
-        playRoundReplaysSequentially(data.items);
+        // Start a new replays session; used to prevent accidental re-entry
+        roundReplaysSessionIdRef.current += 1;
+        playRoundReplaysSequentially(data.items, roundReplaysSessionIdRef.current);
       } catch (e) {
         console.error("error handling round_replays", e);
       }
@@ -1398,8 +1415,8 @@ export default function App() {
       await new Promise((r) => setTimeout(r, poll));
       waited += poll;
     }
-    // settle
-    await new Promise((r) => setTimeout(r, 100));
+    // settle (shortened)
+    await new Promise((r) => setTimeout(r, 50));
   };
 
   // Helper: ensure a replay item has fully finished (no animations/merges running)
@@ -1426,7 +1443,8 @@ export default function App() {
       if (!solution || !Array.isArray(solution.c) || !Array.isArray(solution.m)) return;
       // Full showcase: load starting 4-card hand, then replay all moves to reach target
       const hand = solution.c.map((v, i) => ({ id: `replay-${Date.now()}-${i}-${Math.random()}`, value: v }));
-      await playIncomingDeal(hand, solution.t);
+      const t = (solution && solution.t != null) ? solution.t : replaysRoundTargetRef.current;
+      await playIncomingDeal(hand, t);
       await waitForEntryAnimationsToFinish();
       setReplaysBanner("");
       await replaySolution(solution.m);
@@ -1438,15 +1456,44 @@ export default function App() {
 
   const playNoSolutionShowcase = async (entry) => {
     try {
+      // Always lock and show the round target
+      const tRaw = replaysRoundTargetRef.current || currentRoundTarget || target;
+      const t = (typeof tRaw === "number" && Number.isFinite(tRaw)) ? tRaw : Number(tRaw);
+      // If target couldn't be resolved to a finite number, skip showing target but proceed with message
       const hand = Array.isArray(entry.originHand)
         ? entry.originHand.map((c, i) => ({ id: c.id || `nos-${Date.now()}-${i}`, value: c.value }))
         : [];
+
+      // Show the origin player's four cards if available, with standard entry animation
       if (hand.length > 0) {
-        await playIncomingDeal(hand, currentRoundTarget || target);
+        if (Number.isFinite(t)) {
+          await playIncomingDeal(hand, t);
+        } else {
+          // Show hand even if target is missing; target will be set below if possible
+          await playIncomingDeal(hand, currentRoundTarget || target);
+        }
         await waitForEntryAnimationsToFinish();
+        // Ensure the locked target is visible during the showcase
+        if (Number.isFinite(t)) {
+          setTarget(t);
+          setCurrentRoundTarget(t);
+        }
+        setTargetCardFlipped(true);
+      } else {
+        // Even if origin hand is missing, ensure target is visible and board is cleared
+        if (Number.isFinite(t)) {
+          setTarget(t);
+          setCurrentRoundTarget(t);
+        }
+        setCards([]);
+        setOriginalCards([]);
+        setTargetCardFlipped(true);
+        await new Promise((r) => setTimeout(r, 200));
       }
-      setReplaysBanner("No solution was found");
+      // Show "No solution was found" as overlay message, separate from header
+      setNoSolutionMessageShowing(true);
       await new Promise((r) => setTimeout(r, 1800));
+      setNoSolutionMessageShowing(false);
     } catch (e) {
       console.error("playNoSolutionShowcase failed", e);
     }
@@ -1461,7 +1508,7 @@ export default function App() {
     await new Promise((r) => setTimeout(r, 200));
   };
 
-  const playRoundReplaysSequentially = async (items) => {
+  const playRoundReplaysSequentially = async (items, sessionId) => {
     if (!Array.isArray(items)) return;
     setIsPlayingRoundReplays(true);
     setWaitingForOthers(false);
@@ -1469,44 +1516,72 @@ export default function App() {
     // Ensure no reveal guard UI interferes while showcasing
     setViewingReveal(false);
     revealLockRef.current = false;
+    // Lock round target for consistent display across all items
+    replaysRoundTargetRef.current = currentRoundTarget || target;
     // Prevent any previous replay loop from triggering during showcases
     replayInitialCardsRef.current = null;
     replayInitialTargetRef.current = null;
     setReplayPendingMoves(null);
-    for (const item of items) {
+    setNoSolutionMessageShowing(false);
+    let ackEmitted = false;
+    try {
+      for (const item of items) {
+        // If a newer session has started, abort this sequence
+        if (sessionId !== roundReplaysSessionIdRef.current) break;
+        try {
+          // Handle consolidated format: type "player_hand"
+          if (item.type === "player_hand") {
+            // Set header for this player's hand
+            const header = item.header || "";
+            setReplaysBanner(header);
+            currentReplayHeaderRef.current = header;
+            await new Promise((r) => setTimeout(r, REPLAY_PRE_ITEM_DELAY));
+            
+            if (item.solverInfo) {
+              // This hand was solved - show solution replay
+              await playSolutionShowcase(item.solverInfo.solution);
+            } else if (item.noSolutionMethod) {
+              // This hand was not solved - show no-solution showcase
+              await playNoSolutionShowcase({ originHand: item.originHand });
+            } else {
+              // Hand belongs to current player (solver) - just show hand with no moves
+              await playIncomingDeal(item.originHand, replaysRoundTargetRef.current);
+              await waitForEntryAnimationsToFinish();
+            }
+            
+            await waitForReplayIdle();
+          }
+        } catch (e) {
+          console.error("error during round replay item", e);
+        }
+        await clearShowcaseBoard();
+      }
+    } finally {
+      setReplaysBanner("");
+      currentReplayHeaderRef.current = "";
+      setNoSolutionMessageShowing(false);
+      setIsPlayingRoundReplays(false);
+      // Mark replays as complete for this round to avoid duplicate runs
+      roundReplaysDoneRef.current = true;
+      // Ack to server that this client finished watching replays (defensive)
       try {
-        if (item.type === "solution" && item.solution) {
-          // Prefer precomputed header if available to avoid race conditions
-          const header = item.header || "";
-          setReplaysBanner(header);
-          await new Promise((r) => setTimeout(r, 400));
-          await playSolutionShowcase(item.solution);
-          await waitForReplayIdle();
-        } else if (item.type === "no_solution") {
-          const header = item.header || "";
-          setReplaysBanner(header);
-          await new Promise((r) => setTimeout(r, 400));
-          await playNoSolutionShowcase(item);
-          await waitForReplayIdle();
+        const myId = socket.getSocketId();
+        if (multiplayerRoom && myId) {
+          socket.emitReplaysComplete(multiplayerRoom, myId);
+          ackEmitted = true;
         }
       } catch (e) {
-        console.error("error during round replay item", e);
+        console.error("emitReplaysComplete failed", e);
       }
-      await clearShowcaseBoard();
+      // After ack, clear any reveal caches and show waiting UI until next deal arrives
+      viewingRevealRef.current = false;
+      setViewingReveal(false);
+      lastRevealHandRef.current = null;
+      lastRevealOriginRef.current = null;
+      lastRevealExpiresAtRef.current = null;
+      setNoSolutionTimer(null);
+      setWaitingForOthers(true);
     }
-    setReplaysBanner("");
-    setIsPlayingRoundReplays(false);
-    // Ack to server that this client finished watching replays
-    try {
-      const myId = socket.getSocketId();
-      if (multiplayerRoom && myId) {
-        socket.emitReplaysComplete(multiplayerRoom, myId);
-      }
-    } catch (e) {
-      console.error("emitReplaysComplete failed", e);
-    }
-    // After ack, show waiting UI until next deal arrives
-    setWaitingForOthers(true);
   };
 
   const getCardExitStyle = (cardCenter, screenCenterElement) => {
@@ -1568,6 +1643,10 @@ export default function App() {
   }, [replayPendingMoves, isReshuffling, newCardsAnimatingIn, targetCardFlipped, isReplaying]);
 
   useEffect(() => {
+    // Do not trigger live win-handling during solution or round replays
+    if (isReplaying || isPlayingRoundReplays) {
+      return;
+    }
     if (
       !isReshuffling &&
       !newCardsAnimatingIn &&
@@ -2074,7 +2153,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {(noSolutionTimer || (viewingRevealRef.current && lastRevealHandRef.current && lastRevealOriginRef.current)) && (
+      {!isPlayingRoundReplays && (noSolutionTimer || (viewingRevealRef.current && lastRevealHandRef.current && lastRevealOriginRef.current)) && (
         <NoSolutionTimer
           timer={noSolutionTimer || {
             type: "reveal",
@@ -2220,13 +2299,9 @@ export default function App() {
 
       {gameStarted && (
         <>
-          {isPlayingRoundReplays && (
-            <div className="text-center mt-2" style={{ zIndex: 1200 }}>
-              <span className="badge bg-secondary">{replaysBanner || ""}</span>
-            </div>
-          )}
+          {/* Omit top-of-page replay banner to avoid clutter; headers render inside the boxed mini-board */}
           {/* Show finished player count in multiplayer */}
-          {multiplayerRoom && activeCount > 0 && (
+          {multiplayerRoom && activeCount > 0 && !isPlayingRoundReplays && (
             <div className="text-center mt-3 mb-2">
               <span className="badge bg-secondary">Finished players: {finishedCount}/{activeCount}</span>
             </div>
@@ -2393,7 +2468,7 @@ export default function App() {
             const originId = (noSolutionTimer && noSolutionTimer.originPlayerId) || null;
             const originActiveAndIsOrigin = originNoSolutionActive && myId && originId && myId === originId;
             // During round replays, always show the boxed mini-board with a clear header
-            const shouldShowBox = isPlayingRoundReplays || showingOriginHand || showingRevealHand;
+            const shouldShowBox = (isPlayingRoundReplays && cards.length > 0) || showingOriginHand || showingRevealHand;
             // Compute replay header if in replays phase
             let replayHeader = null;
             if (isPlayingRoundReplays) {
@@ -2406,19 +2481,19 @@ export default function App() {
                   const originId = (noSolutionTimer && noSolutionTimer.originPlayerId) || lastRevealOriginRef.current;
                   const originPlayer = players.find(p => p.playerId === originId);
                   // If in round replays, prefer the computed replayHeader
-                  const label = isPlayingRoundReplays && replayHeader
-                    ? replayHeader
+                  const label = isPlayingRoundReplays && (currentReplayHeaderRef.current || replayHeader)
+                    ? (currentReplayHeaderRef.current || replayHeader)
                     : originPlayer && originPlayer.name
                       ? `${originPlayer.name}'s hand`
-                      : "Player's hand";
+                      : "";
                   return (
                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
-                      <span className="player-cards-name">{label}</span>
+                      {label ? (<span className="player-cards-name">{label}</span>) : null}
                     </div>
                   );
                 })()}
             <div className="row justify-content-center gx-3 gy-3 position-relative">
-              {waitingForOthersAfterWin && !viewingReveal && !originActiveAndIsOrigin && (
+              {waitingForOthersAfterWin && !viewingReveal && !originActiveAndIsOrigin && !isPlayingRoundReplays && (
                 <div className="col-12">
                   <div className="alert alert-info mt-4">Waiting for other players...</div>
                 </div>
@@ -2510,6 +2585,29 @@ export default function App() {
                     isAbstract={flyingCardInfo.isAbstract}
                     isFlipped={false}
                   />
+                </div>
+              )}
+              
+              {/* "No solution was found" overlay message during round replays */}
+              {noSolutionMessageShowing && isPlayingRoundReplays && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    backgroundColor: "rgba(0, 0, 0, 0.7)",
+                    color: "white",
+                    padding: "30px 40px",
+                    borderRadius: "10px",
+                    fontSize: "28px",
+                    fontWeight: "bold",
+                    textAlign: "center",
+                    zIndex: 1100,
+                    maxWidth: "80%",
+                  }}
+                >
+                  No solution was found
                 </div>
               )}
             </div>

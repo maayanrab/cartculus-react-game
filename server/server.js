@@ -66,6 +66,11 @@ function startNewRoundForRoom(roomId) {
     const rr = rooms.getRoom(roomId);
     if (rr && rr.pendingDeal) {
       io.to(roomId).emit("deal_riddle", rr.pendingDeal);
+      // Clear the pending status for clients to stop showing "Waiting for others to load..."
+      io.to(roomId).emit("pending_status", {
+        loadedCount: 0,
+        total: 0,
+      });
       rr.pendingDeal = null;
       rr.pendingDealLoaded = null;
       rr.pendingDealTimeout = null;
@@ -110,24 +115,33 @@ function scheduleNewRoundIfAllWaiting(roomId) {
       try {
         r.roundReplaysBroadcasted = true;
         r.replayAcks = new Set();
+        
+        // Generate consolidated replays (one per active player)
+        const consolidatedReplays = rooms.generateRoundReplays(roomId);
+        
         // Build a stable snapshot of player names to avoid client race conditions
         const idToName = {};
         for (const p of r.players.values()) {
           idToName[p.playerId] = p.name || null;
         }
-        const enriched = r.roundReplays.map(item => {
-          const solverName = item.solverId ? (idToName[item.solverId] || null) : null;
-          const originName = item.originPlayerId ? (idToName[item.originPlayerId] || null) : null;
-          let header = "";
-          if (item.type === "solution" && item.solution) {
-            header = (originName && item.challengeContext)
-              ? `${originName}'s hand solved by ${solverName || "Player"}`
-              : `${(solverName || "Player")}'s hand`;
-          } else if (item.type === "no_solution") {
-            header = `${(originName || "Player")}'s hand`;
+        
+        // Enrich with headers
+        const enriched = consolidatedReplays.map(item => {
+          const playerName = idToName[item.playerId] || "Player";
+          let header = `${playerName}'s hand`;
+          
+          if (item.solverInfo) {
+            const solverName = idToName[item.solverInfo.solverId] || "Player";
+            if (item.solverInfo.challengeContext) {
+              header = `${playerName}'s hand solved by ${solverName}`;
+            } else {
+              header = `${solverName}'s hand`;
+            }
           }
-          return { ...item, solverName, originName, header };
+          
+          return { ...item, header };
         });
+        
         // Emit to room with enriched headers and names
         io.to(roomId).emit("round_replays", { items: enriched });
         // Fallback timeout in case clients don't ack
@@ -293,6 +307,11 @@ io.on("connection", (socket) => {
             room.pendingDealTimeout = null;
           }
           io.to(roomId).emit("deal_riddle", room.pendingDeal);
+          // Clear the pending status for clients to stop showing "Waiting for others to load..."
+          io.to(roomId).emit("pending_status", {
+            loadedCount: 0,
+            total: 0,
+          });
           room.pendingDeal = null;
           room.pendingDealLoaded = null;
           io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
@@ -671,6 +690,11 @@ try {
       }
       console.log("[EMIT] deal_riddle (all loaded)", { roomId });
       io.to(roomId).emit("deal_riddle", room.pendingDeal);
+      // Clear the pending status for clients to stop showing "Waiting for others to load..."
+      io.to(roomId).emit("pending_status", {
+        loadedCount: 0,
+        total: 0,
+      });
       room.pendingDeal = null;
       room.pendingDealLoaded = null;
       console.log("[EMIT] lobby_update (after deal_riddle)", { roomId });
@@ -697,6 +721,11 @@ try {
             }
             console.log("[EMIT] deal_riddle (post disconnect all loaded)", { roomId });
             io.to(roomId).emit("deal_riddle", room.pendingDeal);
+            // Clear the pending status for clients to stop showing "Waiting for others to load..."
+            io.to(roomId).emit("pending_status", {
+              loadedCount: 0,
+              total: 0,
+            });
             room.pendingDeal = null;
             room.pendingDealLoaded = null;
             console.log("[EMIT] lobby_update (post disconnect)", { roomId });
