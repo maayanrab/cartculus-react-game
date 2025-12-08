@@ -1456,41 +1456,40 @@ export default function App() {
 
   const playNoSolutionShowcase = async (entry) => {
     try {
-      // Always lock and show the round target
-      const tRaw = replaysRoundTargetRef.current || currentRoundTarget || target;
-      const t = (typeof tRaw === "number" && Number.isFinite(tRaw)) ? tRaw : Number(tRaw);
-      // If target couldn't be resolved to a finite number, skip showing target but proceed with message
+      // Defensive: always resolve a valid target for the showcase
+      let tRaw = entry.target;
+      if (typeof tRaw === "undefined" || tRaw === null) {
+        tRaw = replaysRoundTargetRef.current || currentRoundTarget || target;
+      }
+      let t = (typeof tRaw === "number" && Number.isFinite(tRaw)) ? tRaw : Number(tRaw);
+      if (!Number.isFinite(t)) {
+        // Fallback: try to find a valid target from any available state
+        t = [replaysRoundTargetRef.current, currentRoundTarget, target].find(Number.isFinite);
+      }
+      // If still not valid, forcibly set to 24 (default game target)
+      if (!Number.isFinite(t)) t = 24;
+
       const hand = Array.isArray(entry.originHand)
         ? entry.originHand.map((c, i) => ({ id: c.id || `nos-${Date.now()}-${i}`, value: c.value }))
         : [];
 
       // Show the origin player's four cards if available, with standard entry animation
       if (hand.length > 0) {
-        if (Number.isFinite(t)) {
-          await playIncomingDeal(hand, t);
-        } else {
-          // Show hand even if target is missing; target will be set below if possible
-          await playIncomingDeal(hand, currentRoundTarget || target);
-        }
+        await playIncomingDeal(hand, t);
         await waitForEntryAnimationsToFinish();
-        // Ensure the locked target is visible during the showcase
-        if (Number.isFinite(t)) {
-          setTarget(t);
-          setCurrentRoundTarget(t);
-        }
+        setTarget(t);
+        setCurrentRoundTarget(t);
         setTargetCardFlipped(true);
       } else {
         // Even if origin hand is missing, ensure target is visible and board is cleared
-        if (Number.isFinite(t)) {
-          setTarget(t);
-          setCurrentRoundTarget(t);
-        }
+        setTarget(t);
+        setCurrentRoundTarget(t);
         setCards([]);
         setOriginalCards([]);
         setTargetCardFlipped(true);
         await new Promise((r) => setTimeout(r, 200));
       }
-      // Show "No solution was found" as overlay message, separate from header
+      // Always show the overlay message for no-solution, regardless of replay type
       setNoSolutionMessageShowing(true);
       await new Promise((r) => setTimeout(r, 1800));
       setNoSolutionMessageShowing(false);
@@ -1536,19 +1535,19 @@ export default function App() {
             setReplaysBanner(header);
             currentReplayHeaderRef.current = header;
             await new Promise((r) => setTimeout(r, REPLAY_PRE_ITEM_DELAY));
-            
+
             if (item.solverInfo) {
               // This hand was solved - show solution replay
               await playSolutionShowcase(item.solverInfo.solution);
             } else if (item.noSolutionMethod) {
               // This hand was not solved - show no-solution showcase
-              await playNoSolutionShowcase({ originHand: item.originHand });
+              await playNoSolutionShowcase({ originHand: item.originHand, target: item.target });
             } else {
               // Hand belongs to current player (solver) - just show hand with no moves
               await playIncomingDeal(item.originHand, replaysRoundTargetRef.current);
               await waitForEntryAnimationsToFinish();
             }
-            
+
             await waitForReplayIdle();
           }
         } catch (e) {

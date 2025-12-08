@@ -579,6 +579,7 @@ class Rooms {
     );
 
     // Build one replay entry per active player
+    const target = room.deal?.target;
     const replays = activePlayers.map((player) => {
       const playerId = player.playerId;
       const originHand = room.deal.perPlayerHands[playerId] || [];
@@ -603,9 +604,12 @@ class Rooms {
           challengeContext: solutionEntry.challengeContext,
         };
       } else if (noSolutionEntry) {
-        // Hand was declared no-solution
-        noSolutionMethod = noSolutionEntry.method; // "timeout" or "skip"
+        // Hand was declared no-solution (timeout, skip, or revealed)
+        noSolutionMethod = noSolutionEntry.method; // "timeout", "skip", or "reveal"
       }
+
+      // Always include a valid target for the client, even for revealed hand no-solution
+      let safeTarget = (typeof target === "number" && Number.isFinite(target)) ? target : 24;
 
       return {
         type: "player_hand",
@@ -613,6 +617,7 @@ class Rooms {
         originHand,
         solverInfo,
         noSolutionMethod,
+        target: safeTarget,
         ts: finishTime,
       };
     });

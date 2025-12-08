@@ -62,21 +62,21 @@ function startNewRoundForRoom(roomId) {
     total: r.players.size,
   });
 
-  r.pendingDealTimeout = setTimeout(() => {
-    const rr = rooms.getRoom(roomId);
-    if (rr && rr.pendingDeal) {
-      io.to(roomId).emit("deal_riddle", rr.pendingDeal);
-      // Clear the pending status for clients to stop showing "Waiting for others to load..."
-      io.to(roomId).emit("pending_status", {
-        loadedCount: 0,
-        total: 0,
-      });
-      rr.pendingDeal = null;
-      rr.pendingDealLoaded = null;
-      rr.pendingDealTimeout = null;
-      io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-    }
-  }, 8000);
+    // Defensive: if not all clients load within 10s, force-advance
+    r.pendingDealTimeout = setTimeout(() => {
+      const rr = rooms.getRoom(roomId);
+      if (rr && rr.pendingDeal) {
+        io.to(roomId).emit("deal_riddle", rr.pendingDeal);
+        io.to(roomId).emit("pending_status", {
+          loadedCount: 0,
+          total: 0,
+        });
+        rr.pendingDeal = null;
+        rr.pendingDealLoaded = null;
+        rr.pendingDealTimeout = null;
+        io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+      }
+    }, 10000);
 
   io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 }
