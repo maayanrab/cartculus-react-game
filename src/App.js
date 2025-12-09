@@ -403,14 +403,15 @@ export default function App() {
   };
 
   // Replay pacing configuration
-  const REPLAY_STARTUP_DELAY = 1250;       // pause before replay animations begin (after cards are visible)
-  const REPLAY_DELAY_FIRST_CARD = 500;     // pause after highlighting first card
-  const REPLAY_DELAY_OPERATOR = 500;       // pause after selecting operator
-  const REPLAY_DELAY_SECOND_CARD = 350;    // pause after highlighting second card
-  const REPLAY_DELAY_BEFORE_MERGE = 200;   // tiny pause before cards merge
-  const REPLAY_POST_MERGE_BUFFER = 500;    // small buffer after merge settles
-  const REPLAY_PRE_ITEM_DELAY = 50;        // minimal pause before starting each replay item (optimized for fast start)
-
+  const REPLAY_STARTUP_DELAY = 1250;                     // pause before replay animations begin (after cards are visible)
+  const REPLAY_COMPLETION_DELAY = 2000;                  // pause after solution completes (target reached) before moving to next replay
+  const REPLAY_NO_SOLUTION_MESSAGE_DURATION = 2500;      // how long "No solution was found" message stays on screen
+  const REPLAY_DELAY_FIRST_CARD = 500;                   // pause after highlighting first card
+  const REPLAY_DELAY_OPERATOR = 500;                     // pause after selecting operator
+  const REPLAY_DELAY_SECOND_CARD = 350;                  // pause after highlighting second card
+  const REPLAY_DELAY_BEFORE_MERGE = 200;                 // tiny pause before cards merge
+  const REPLAY_POST_MERGE_BUFFER = 500;                  // small buffer after merge settles
+  const REPLAY_PRE_ITEM_DELAY = 50;                      // minimal pause before starting each replay item (optimized for fast start)
   const highlightStep = async (aId, op, bId) => {
     setSelected([aId]);
     await new Promise((r) => setTimeout(r, REPLAY_DELAY_FIRST_CARD));
@@ -1495,7 +1496,7 @@ export default function App() {
       // Pause before starting merge animations so viewer can focus on the cards
       await new Promise((r) => setTimeout(r, REPLAY_STARTUP_DELAY));
       await replaySolution(solution.m);
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, REPLAY_COMPLETION_DELAY));
     } catch (e) {
       console.error("playSolutionShowcase failed", e);
     }
@@ -1530,6 +1531,8 @@ export default function App() {
         setTarget(t);
         setCurrentRoundTarget(t);
         setTargetCardFlipped(true);
+        // Pause before showing the no-solution message so viewer can focus on the cards
+        await new Promise((r) => setTimeout(r, REPLAY_STARTUP_DELAY));
       } else {
         // Even if origin hand is missing, ensure target is visible and board is cleared
         setTarget(t);
@@ -1541,7 +1544,7 @@ export default function App() {
       }
       // Always show the overlay message for no-solution, regardless of replay type
       setNoSolutionMessageShowing(true);
-      await new Promise((r) => setTimeout(r, 1800));
+      await new Promise((r) => setTimeout(r, REPLAY_NO_SOLUTION_MESSAGE_DURATION));
       setNoSolutionMessageShowing(false);
     } catch (e) {
       console.error("playNoSolutionShowcase failed", e);
