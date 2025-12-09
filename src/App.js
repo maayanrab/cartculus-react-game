@@ -777,9 +777,13 @@ export default function App() {
           // Non-origin players should immediately see the origin's revealed cards,
           // even if they were in a "waiting" state after finishing earlier.
           if (!isOrigin && Array.isArray(payload.originHand) && payload.originHand.length > 0) {
-            // Only swap cards when the timer first starts (no backup exists yet).
-            // Don't re-swap on every timer update (e.g., when votes are added).
-            if (!tempHandBackupRef.current) {
+            // Swap cards if:
+            // 1. No backup exists yet (first timer)
+            // 2. OR the origin player changed (transitioning from one player's reveal to another's)
+            const needsSwap = !tempHandBackupRef.current || 
+                             (tempHandBackupRef.current && lastRevealOriginRef.current !== payload.originPlayerId);
+            
+            if (needsSwap) {
               tempHandBackupRef.current = {
                 cards: cardsRef.current,
                 original: originalCardsRef.current,
@@ -800,7 +804,7 @@ export default function App() {
               setHistory([]);
               setSelected([]);
               setSelectedOperator(null);
-              console.log("[CLIENT] reveal swap to origin hand", { cardsCount: incoming.length });
+              console.log("[CLIENT] reveal swap to origin hand", { cardsCount: incoming.length, originPlayerId: payload.originPlayerId });
             }
           }
         }
