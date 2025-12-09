@@ -1454,13 +1454,13 @@ export default function App() {
     const maxWaitMs = 5000;
     const poll = 30;
     let waited = 0;
-    while ((isReshuffling || newCardsAnimatingIn || !targetCardFlipped) && waited < maxWaitMs) {
+    // For replays: just wait until reshuffle/entry animations finish
+    // Do NOT wait for targetCardFlipped since replays don't flip the target during entry
+    while ((isReshuffling || newCardsAnimatingIn) && waited < maxWaitMs) {
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, poll));
       waited += poll;
     }
-    // settle (shortened)
-    await new Promise((r) => setTimeout(r, 50));
   };
 
   // Helper: ensure a replay item has fully finished (no animations/merges running)
@@ -1491,6 +1491,8 @@ export default function App() {
       await playIncomingDeal(hand, t);
       await waitForEntryAnimationsToFinish();
       setReplaysBanner("");
+      // Pause before starting merge animations so viewer can focus on the cards
+      await new Promise((r) => setTimeout(r, 1000));
       await replaySolution(solution.m);
       await new Promise((r) => setTimeout(r, 800));
     } catch (e) {
@@ -1551,7 +1553,7 @@ export default function App() {
     setSelected([]);
     setSelectedOperator(null);
     setHistory([]);
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 50));
   };
 
   const playRoundReplaysSequentially = async (items, sessionId) => {
