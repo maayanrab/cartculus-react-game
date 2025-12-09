@@ -403,6 +403,7 @@ export default function App() {
   };
 
   // Replay pacing configuration
+  const REPLAY_STARTUP_DELAY = 1250;       // pause before replay animations begin (after cards are visible)
   const REPLAY_DELAY_FIRST_CARD = 500;     // pause after highlighting first card
   const REPLAY_DELAY_OPERATOR = 500;       // pause after selecting operator
   const REPLAY_DELAY_SECOND_CARD = 350;    // pause after highlighting second card
@@ -1492,7 +1493,7 @@ export default function App() {
       await waitForEntryAnimationsToFinish();
       setReplaysBanner("");
       // Pause before starting merge animations so viewer can focus on the cards
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, REPLAY_STARTUP_DELAY));
       await replaySolution(solution.m);
       await new Promise((r) => setTimeout(r, 800));
     } catch (e) {
