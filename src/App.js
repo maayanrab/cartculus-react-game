@@ -958,7 +958,7 @@ export default function App() {
       try {
         if (!payload) return;
         // Suppress waiting overlay during replays phase
-        if (isPlayingRoundReplays) return;
+        if (isPlayingRoundReplaysRef.current) return;
         setPendingLoadedCount(payload.loadedCount || 0);
         setPendingTotalCount(payload.total || 0);
         setWaitingForOthers((payload.loadedCount || 0) < (payload.total || 0));
