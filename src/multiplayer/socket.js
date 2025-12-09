@@ -76,6 +76,11 @@ export function emitDealLoaded(roomId) {
   socket.emit("deal_loaded", { roomId });
 }
 
+export function emitReplaysComplete(roomId, playerId) {
+  if (!socket) return;
+  socket.emit("client_replays_complete", { roomId, playerId });
+}
+
 export default {
   connect,
   disconnect,
@@ -87,6 +92,7 @@ export default {
   emitSkipVote,
   requestReshuffle,
   emitDealLoaded,
+  emitReplaysComplete,
   on,
   getSocketId,
 };

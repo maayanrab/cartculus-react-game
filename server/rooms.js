@@ -25,6 +25,12 @@ class Rooms {
         pendingDealLoaded: null,
         pendingDealTimeout: null,
         autoNextRoundTimeout: null, // NEW: used by server to avoid double-scheduling
+        // Replays state for current round
+        roundReplays: [],
+        roundReplaysBroadcasted: false,
+        replayAcks: null,
+        replaysWaitTimeout: null,
+        playerFinishOrder: {}, // Track when each player finished (for ordering replays)
       });
     }
     return this.rooms.get(id);
@@ -157,6 +163,15 @@ class Rooms {
     }
 
     room.deal = { perPlayerHands, target, seed: null };
+    // Reset round replays state for the new round
+    room.roundReplays = [];
+    room.roundReplaysBroadcasted = false;
+    room.replayAcks = null;
+    room.playerFinishOrder = {}; // Reset finish order tracking for new round
+    if (room.replaysWaitTimeout) {
+      clearTimeout(room.replaysWaitTimeout);
+      room.replaysWaitTimeout = null;
+    }
     return { publicDeal: { target, perPlayerHands } };
   }
 
@@ -250,6 +265,11 @@ class Rooms {
     player.roundFinished = true;
     player.finishedStatus = "waiting";
     
+    // Record finish time for replay ordering if not already recorded
+    if (!room.playerFinishOrder[playerId]) {
+      room.playerFinishOrder[playerId] = Date.now();
+    }
+    
     // Log when player enters waiting state
     console.log(`${player.name || playerId} has finished (waiting for other players)`);
   }
@@ -317,6 +337,17 @@ class Rooms {
           points: pts,
         },
       });
+      // Record a replay entry for no-solution timeout award
+      try {
+        room.roundReplays = room.roundReplays || [];
+        room.roundReplays.push({
+          type: "no_solution",
+          originPlayerId,
+          originHand,
+          method: "timeout",
+          ts: Date.now(),
+        });
+      } catch {}
     }, duration);
 
     cb({
@@ -392,7 +423,7 @@ class Rooms {
 
     room.noSolution = null;
 
-    return {
+    const result = {
       awardedTo: originPlayerId,
       broadcast: {
         originPlayerId,
@@ -402,6 +433,18 @@ class Rooms {
         points: pts,
       },
     };
+    // Record a replay entry for accepted no-solution by skip
+    try {
+      room.roundReplays = room.roundReplays || [];
+      room.roundReplays.push({
+        type: "no_solution",
+        originPlayerId,
+        originHand,
+        method: "skip",
+        ts: Date.now(),
+      });
+    } catch {}
+    return result;
   }
 
   // Reveal timer – controls a 45s window where the last player can still solve.
@@ -432,6 +475,18 @@ class Rooms {
     // The server will start a fresh round when it sees this "expired" event.
     room.reveal.timeoutId = setTimeout(() => {
       room.reveal = null;
+
+      // Record a replay entry for reveal timeout (unsolved revealed hand)
+      try {
+        room.roundReplays = room.roundReplays || [];
+        room.roundReplays.push({
+          type: "no_solution",
+          originPlayerId,
+          originHand,
+          method: "reveal",
+          ts: Date.now(),
+        });
+      } catch {}
 
       cb({
         awardedTo: null,
@@ -521,6 +576,75 @@ class Rooms {
       roomName: room ? room.name : null,
       hostId: room ? room.host : null,
     }));
+  }
+
+  /**
+   * Generate consolidated round replays: exactly one per active player.
+   * Each replay shows the player's actual hand from the round, in finish order.
+   * Consolidates all solve events (solutions, no-solution timeout, skip) into context for that single hand.
+   */
+  generateRoundReplays(roomId) {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.deal) return [];
+
+    const activePlayers = Array.from(room.players.values()).filter(
+      (p) => p.isActiveInRound
+    );
+
+    // Build one replay entry per active player
+    const target = room.deal?.target;
+    const replays = activePlayers.map((player) => {
+      const playerId = player.playerId;
+      const originHand = room.deal.perPlayerHands[playerId] || [];
+      const finishTime = room.playerFinishOrder[playerId] || Date.now();
+
+      // Find if/how this player's hand was solved
+      // A solution belongs to this player if either:
+      // 1. This player's hand was challenged and someone solved it (originPlayerId === playerId)
+      // 2. This player solved their own hand (solverId === playerId && originPlayerId is null/absent)
+      const solutionEntry = room.roundReplays.find(
+        (r) => r.type === "solution" && (
+          r.originPlayerId === playerId ||
+          (r.solverId === playerId && !r.originPlayerId)
+        )
+      );
+      const noSolutionEntry = room.roundReplays.find(
+        (r) => r.type === "no_solution" && r.originPlayerId === playerId
+      );
+
+      let solverInfo = null;
+      let noSolutionMethod = null;
+
+      if (solutionEntry) {
+        // Hand was solved
+        solverInfo = {
+          solverId: solutionEntry.solverId,
+          solution: solutionEntry.solution,
+          challengeContext: solutionEntry.challengeContext,
+        };
+      } else if (noSolutionEntry) {
+        // Hand was declared no-solution (timeout, skip, or revealed)
+        noSolutionMethod = noSolutionEntry.method; // "timeout", "skip", or "reveal"
+      }
+
+      // Always include a valid target for the client, even for revealed hand no-solution
+      let safeTarget = (typeof target === "number" && Number.isFinite(target)) ? target : 24;
+
+      return {
+        type: "player_hand",
+        playerId,
+        originHand,
+        solverInfo,
+        noSolutionMethod,
+        target: safeTarget,
+        ts: finishTime,
+      };
+    });
+
+    // Sort by finish time (ascending: first to finish plays first)
+    replays.sort((a, b) => a.ts - b.ts);
+
+    return replays;
   }
 }
 

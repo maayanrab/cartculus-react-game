@@ -62,16 +62,21 @@ function startNewRoundForRoom(roomId) {
     total: r.players.size,
   });
 
-  r.pendingDealTimeout = setTimeout(() => {
-    const rr = rooms.getRoom(roomId);
-    if (rr && rr.pendingDeal) {
-      io.to(roomId).emit("deal_riddle", rr.pendingDeal);
-      rr.pendingDeal = null;
-      rr.pendingDealLoaded = null;
-      rr.pendingDealTimeout = null;
-      io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
-    }
-  }, 8000);
+    // Defensive: if not all clients load within 10s, force-advance
+    r.pendingDealTimeout = setTimeout(() => {
+      const rr = rooms.getRoom(roomId);
+      if (rr && rr.pendingDeal) {
+        io.to(roomId).emit("deal_riddle", rr.pendingDeal);
+        io.to(roomId).emit("pending_status", {
+          loadedCount: 0,
+          total: 0,
+        });
+        rr.pendingDeal = null;
+        rr.pendingDealLoaded = null;
+        rr.pendingDealTimeout = null;
+        io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
+      }
+    }, 10000);
 
   io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 }
@@ -103,6 +108,56 @@ function scheduleNewRoundIfAllWaiting(roomId) {
     if (r.pendingDeal) return;
     if (!rooms.areAllPlayersWaiting(roomId)) return;
 
+    // If we have round replays to show and haven't broadcasted them yet,
+    // do the replays phase before starting the next round.
+    const hasReplays = Array.isArray(r.roundReplays) && r.roundReplays.length > 0;
+    if (hasReplays && !r.roundReplaysBroadcasted) {
+      try {
+        r.roundReplaysBroadcasted = true;
+        r.replayAcks = new Set();
+        
+        // Generate consolidated replays (one per active player)
+        const consolidatedReplays = rooms.generateRoundReplays(roomId);
+        
+        // Build a stable snapshot of player names to avoid client race conditions
+        const idToName = {};
+        for (const p of r.players.values()) {
+          idToName[p.playerId] = p.name || null;
+        }
+        
+        // Enrich with headers
+        const enriched = consolidatedReplays.map(item => {
+          const playerName = idToName[item.playerId] || "Player";
+          let header = `${playerName}'s hand`;
+          
+          if (item.solverInfo) {
+            const solverName = idToName[item.solverInfo.solverId] || "Player";
+            if (item.solverInfo.challengeContext) {
+              header = `${playerName}'s hand solved by ${solverName}`;
+            } else {
+              header = `${solverName}'s hand`;
+            }
+          }
+          
+          return { ...item, header };
+        });
+        
+        // Emit to room with enriched headers and names
+        io.to(roomId).emit("round_replays", { items: enriched });
+        // Fallback timeout in case clients don't ack
+        r.replaysWaitTimeout = setTimeout(() => {
+          const rr = rooms.getRoom(roomId);
+          if (!rr) return;
+          rr.replaysWaitTimeout = null;
+          startNewRoundForRoom(roomId);
+        }, 20000);
+      } catch (e) {
+        console.error("error broadcasting round_replays", e);
+        startNewRoundForRoom(roomId);
+      }
+      return;
+    }
+
     startNewRoundForRoom(roomId);
   }, 1500);
 }
@@ -115,6 +170,11 @@ function checkForRevealTimer(roomId) {
   try {
     const room = rooms.getRoom(roomId);
     if (!room) return;
+
+    // Do not start reveal timers during the replays phase
+    if (room.roundReplaysBroadcasted) {
+      return;
+    }
 
     // If a reveal is already active, do not start another
     if (room.reveal) {
@@ -154,8 +214,8 @@ function checkForRevealTimer(roomId) {
 
             // Now everyone should be in "waiting", so the auto-next-round
             // logic based on waiting-state will also be consistent with logs.
-            console.log("[ROUND] auto start after reveal timeout", { roomId });
-            startNewRoundForRoom(roomId);
+            console.log("[ROUND] scheduling after reveal timeout (with replays gate)", { roomId });
+            scheduleNewRoundIfAllWaiting(roomId);
           } catch (e) {
             console.error(
               "error auto-starting next round after reveal timeout",
@@ -247,6 +307,11 @@ io.on("connection", (socket) => {
             room.pendingDealTimeout = null;
           }
           io.to(roomId).emit("deal_riddle", room.pendingDeal);
+          // Clear the pending status for clients to stop showing "Waiting for others to load..."
+          io.to(roomId).emit("pending_status", {
+            loadedCount: 0,
+            total: 0,
+          });
           room.pendingDeal = null;
           room.pendingDealLoaded = null;
           io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
@@ -289,6 +354,24 @@ io.on("connection", (socket) => {
 
     const awarded = rooms.playerFinished(roomId, playerId, isNoSolutionChallenge || isRevealChallenge);
     console.log("[STATE] playerFinished", { roomId, playerId, awarded, isNoSolutionChallenge, isRevealChallenge });
+
+    // Record a replay entry for a solution if provided
+    try {
+      if (room && move && move.type === "win" && move.solution && move.solution.c && move.solution.t && Array.isArray(move.solution.m)) {
+        room.roundReplays = room.roundReplays || [];
+        room.roundReplays.push({
+          type: "solution",
+          solverId: playerId,
+          solution: move.solution,
+          // If the solver solved during a challenge, include context
+          challengeContext: isNoSolutionChallenge ? "no_solution" : (isRevealChallenge ? "reveal" : null),
+          originPlayerId: isNoSolutionChallenge && room.noSolution ? room.noSolution.originPlayerId : (isRevealChallenge && room.reveal ? room.reveal.originPlayerId : null),
+          ts: Date.now(),
+        });
+      }
+    } catch (e) {
+      console.error("error recording solution replay", e);
+    }
 
     // If someone finished while a no-solution or reveal timer was active, cancel it
     try {
@@ -369,6 +452,7 @@ io.on("connection", (socket) => {
     }
 
     // After someone finishes, if only one player remains with a live hand, start reveal timer
+    // Avoid starting reveal during replays phase
     checkForRevealTimer(roomId);
   });
 
@@ -527,6 +611,28 @@ try {
       );
       if (done) {
         // Everyone voted to skip the reveal - mark origin as finished and start new round
+        const room = rooms.getRoom(roomId);
+        const originHand =
+          (room &&
+            room.deal &&
+            room.deal.perPlayerHands &&
+            room.deal.perPlayerHands[originPlayerId]) ||
+          [];
+        
+        // Record a replay entry for reveal skip (unsolved revealed hand)
+        try {
+          if (room) {
+            room.roundReplays = room.roundReplays || [];
+            room.roundReplays.push({
+              type: "no_solution",
+              originPlayerId,
+              originHand,
+              method: "reveal",
+              ts: Date.now(),
+            });
+          }
+        } catch {}
+
         rooms.cancelReveal(roomId);
         rooms.markPlayerRoundFinished(roomId, originPlayerId);
         
@@ -539,7 +645,6 @@ try {
         
         // Restore cards for non-origin players before starting new round
         try {
-          const room = rooms.getRoom(roomId);
           if (room) {
             for (const p of room.players.values()) {
               if (p.playerId === originPlayerId) continue;
@@ -554,8 +659,8 @@ try {
         console.log("[EMIT] lobby_update (after reveal skip)", { roomId });
         io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
 
-        // Start a new round with no points given
-        startNewRoundForRoom(roomId);
+        // Schedule next round via waiting-state gate to respect replays phase
+        scheduleNewRoundIfAllWaiting(roomId);
       }
     }
   });
@@ -563,6 +668,28 @@ try {
   socket.on("request_reshuffle", ({ roomId }) => {
     // Manual reshuffle request uses same pipeline as an auto next round.
     startNewRoundForRoom(roomId);
+  });
+
+  socket.on("client_replays_complete", ({ roomId, playerId }) => {
+    try {
+      const room = rooms.getRoom(roomId);
+      if (!room) return;
+      if (!room.roundReplaysBroadcasted) return;
+      room.replayAcks = room.replayAcks || new Set();
+      room.replayAcks.add(playerId);
+      const total = room.players.size;
+      const acked = room.replayAcks.size;
+      console.log("[EVENT] client_replays_complete", { roomId, playerId, acked, total });
+      if (acked >= total) {
+        if (room.replaysWaitTimeout) {
+          clearTimeout(room.replaysWaitTimeout);
+          room.replaysWaitTimeout = null;
+        }
+        startNewRoundForRoom(roomId);
+      }
+    } catch (e) {
+      console.error("error handling client_replays_complete", e);
+    }
   });
 
   socket.on("deal_loaded", ({ roomId }) => {
@@ -584,6 +711,11 @@ try {
       }
       console.log("[EMIT] deal_riddle (all loaded)", { roomId });
       io.to(roomId).emit("deal_riddle", room.pendingDeal);
+      // Clear the pending status for clients to stop showing "Waiting for others to load..."
+      io.to(roomId).emit("pending_status", {
+        loadedCount: 0,
+        total: 0,
+      });
       room.pendingDeal = null;
       room.pendingDealLoaded = null;
       console.log("[EMIT] lobby_update (after deal_riddle)", { roomId });
@@ -610,6 +742,11 @@ try {
             }
             console.log("[EMIT] deal_riddle (post disconnect all loaded)", { roomId });
             io.to(roomId).emit("deal_riddle", room.pendingDeal);
+            // Clear the pending status for clients to stop showing "Waiting for others to load..."
+            io.to(roomId).emit("pending_status", {
+              loadedCount: 0,
+              total: 0,
+            });
             room.pendingDeal = null;
             room.pendingDealLoaded = null;
             console.log("[EMIT] lobby_update (post disconnect)", { roomId });
