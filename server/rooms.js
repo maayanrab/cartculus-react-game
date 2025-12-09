@@ -598,8 +598,14 @@ class Rooms {
       const finishTime = room.playerFinishOrder[playerId] || Date.now();
 
       // Find if/how this player's hand was solved
+      // A solution belongs to this player if either:
+      // 1. This player's hand was challenged and someone solved it (originPlayerId === playerId)
+      // 2. This player solved their own hand (solverId === playerId && originPlayerId is null/absent)
       const solutionEntry = room.roundReplays.find(
-        (r) => r.type === "solution" && r.originPlayerId === playerId
+        (r) => r.type === "solution" && (
+          r.originPlayerId === playerId ||
+          (r.solverId === playerId && !r.originPlayerId)
+        )
       );
       const noSolutionEntry = room.roundReplays.find(
         (r) => r.type === "no_solution" && r.originPlayerId === playerId
