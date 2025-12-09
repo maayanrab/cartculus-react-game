@@ -611,6 +611,28 @@ try {
       );
       if (done) {
         // Everyone voted to skip the reveal - mark origin as finished and start new round
+        const room = rooms.getRoom(roomId);
+        const originHand =
+          (room &&
+            room.deal &&
+            room.deal.perPlayerHands &&
+            room.deal.perPlayerHands[originPlayerId]) ||
+          [];
+        
+        // Record a replay entry for reveal skip (unsolved revealed hand)
+        try {
+          if (room) {
+            room.roundReplays = room.roundReplays || [];
+            room.roundReplays.push({
+              type: "no_solution",
+              originPlayerId,
+              originHand,
+              method: "reveal",
+              ts: Date.now(),
+            });
+          }
+        } catch {}
+
         rooms.cancelReveal(roomId);
         rooms.markPlayerRoundFinished(roomId, originPlayerId);
         
@@ -623,7 +645,6 @@ try {
         
         // Restore cards for non-origin players before starting new round
         try {
-          const room = rooms.getRoom(roomId);
           if (room) {
             for (const p of room.players.values()) {
               if (p.playerId === originPlayerId) continue;

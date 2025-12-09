@@ -475,6 +475,18 @@ class Rooms {
     room.reveal.timeoutId = setTimeout(() => {
       room.reveal = null;
 
+      // Record a replay entry for reveal timeout (unsolved revealed hand)
+      try {
+        room.roundReplays = room.roundReplays || [];
+        room.roundReplays.push({
+          type: "no_solution",
+          originPlayerId,
+          originHand,
+          method: "reveal",
+          ts: Date.now(),
+        });
+      } catch {}
+
       cb({
         awardedTo: null,
         broadcast: {
