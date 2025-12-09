@@ -775,7 +775,8 @@ export default function App() {
           // Non-origin players should immediately see the origin's revealed cards,
           // even if they were in a "waiting" state after finishing earlier.
           if (!isOrigin && Array.isArray(payload.originHand) && payload.originHand.length > 0) {
-            // Backup current state if not already backed up
+            // Only swap cards when the timer first starts (no backup exists yet).
+            // Don't re-swap on every timer update (e.g., when votes are added).
             if (!tempHandBackupRef.current) {
               tempHandBackupRef.current = {
                 cards: cardsRef.current,
@@ -783,22 +784,22 @@ export default function App() {
                 wasWaiting: waitingForOthersAfterWinRef.current,
                 history: historyRef.current,
               };
+              const incoming = payload.originHand.map((c) => ({ 
+                id: c.id, 
+                value: c.value, 
+                isPlaceholder: false, 
+                invisible: false 
+              }));
+              setCards(incoming);
+              setOriginalCards(payload.originHand);
+              setGameStarted(true);
+              // Clear waiting state so revealed cards are visible
+              setWaitingForOthersAfterWin(false);
+              setHistory([]);
+              setSelected([]);
+              setSelectedOperator(null);
+              console.log("[CLIENT] reveal swap to origin hand", { cardsCount: incoming.length });
             }
-            const incoming = payload.originHand.map((c) => ({ 
-              id: c.id, 
-              value: c.value, 
-              isPlaceholder: false, 
-              invisible: false 
-            }));
-            setCards(incoming);
-            setOriginalCards(payload.originHand);
-            setGameStarted(true);
-            // Clear waiting state so revealed cards are visible
-            setWaitingForOthersAfterWin(false);
-            setHistory([]);
-            setSelected([]);
-            setSelectedOperator(null);
-            console.log("[CLIENT] reveal swap to origin hand", { cardsCount: incoming.length });
           }
         }
         
@@ -1054,7 +1055,8 @@ export default function App() {
     const originId = noSolutionTimer.originPlayerId;
     // only swap hands for players who are NOT the origin
     if (currentId && originId && currentId !== originId && Array.isArray(noSolutionTimer.originHand)) {
-      // backup current hand so we can restore later (even if empty, for players who finished)
+      // Only swap cards when the timer first starts (no backup exists yet).
+      // Don't re-swap on every timer update (e.g., when votes are added).
       if (!tempHandBackupRef.current) {
         tempHandBackupRef.current = {
           cards,
@@ -1062,19 +1064,19 @@ export default function App() {
           wasWaiting: waitingForOthersAfterWinRef.current,
           history: historyRef.current, // Save the player's undo history
         };
+        const incoming = noSolutionTimer.originHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
+        setCards(incoming);
+        // Preserve full card objects so Reset/Undo and id-based selection work correctly
+        setOriginalCards(noSolutionTimer.originHand);
+        setGameStarted(true);
+        // Clear waiting state so player can see and interact with the origin's cards
+        setWaitingForOthersAfterWin(false);
+        // Clear history/undo stack so players can't undo and modify the origin's cards
+        setHistory([]);
+        // Clear selection state so previous card/operator selections don't interfere
+        setSelected([]);
+        setSelectedOperator(null);
       }
-      const incoming = noSolutionTimer.originHand.map((c) => ({ id: c.id, value: c.value, isPlaceholder: false, invisible: false }));
-      setCards(incoming);
-      // Preserve full card objects so Reset/Undo and id-based selection work correctly
-      setOriginalCards(noSolutionTimer.originHand);
-      setGameStarted(true);
-      // Clear waiting state so player can see and interact with the origin's cards
-      setWaitingForOthersAfterWin(false);
-      // Clear history/undo stack so players can't undo and modify the origin's cards
-      setHistory([]);
-      // Clear selection state so previous card/operator selections don't interfere
-      setSelected([]);
-      setSelectedOperator(null);
     }
   }, [noSolutionTimer]);
 
