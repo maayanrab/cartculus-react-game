@@ -405,7 +405,7 @@ export default function App() {
   // Replay pacing configuration
   const REPLAY_STARTUP_DELAY = 1250;                     // pause before replay animations begin (after cards are visible)
   const REPLAY_COMPLETION_DELAY = 2000;                  // pause after solution completes (target reached) before moving to next replay
-  const REPLAY_NO_SOLUTION_MESSAGE_DURATION = 2500;      // how long "No solution was found" message stays on screen
+  const REPLAY_NO_SOLUTION_MESSAGE_DURATION = 3500;      // how long "No solution was found" message stays on screen
   const REPLAY_DELAY_FIRST_CARD = 500;                   // pause after highlighting first card
   const REPLAY_DELAY_OPERATOR = 500;                     // pause after selecting operator
   const REPLAY_DELAY_SECOND_CARD = 350;                  // pause after highlighting second card
@@ -767,6 +767,11 @@ export default function App() {
           if (Array.isArray(payload.originHand) && payload.originHand.length > 0) {
             lastRevealHandRef.current = payload.originHand;
           }
+          
+          // Check if origin player changed BEFORE updating the ref
+          const previousOriginId = lastRevealOriginRef.current;
+          const originChanged = previousOriginId !== null && previousOriginId !== payload.originPlayerId;
+          
           if (payload && payload.originPlayerId) {
             lastRevealOriginRef.current = payload.originPlayerId;
                 if (payload && payload.expiresAt) {
@@ -780,8 +785,7 @@ export default function App() {
             // Swap cards if:
             // 1. No backup exists yet (first timer)
             // 2. OR the origin player changed (transitioning from one player's reveal to another's)
-            const needsSwap = !tempHandBackupRef.current || 
-                             (tempHandBackupRef.current && lastRevealOriginRef.current !== payload.originPlayerId);
+            const needsSwap = !tempHandBackupRef.current || originChanged;
             
             if (needsSwap) {
               tempHandBackupRef.current = {
@@ -804,7 +808,7 @@ export default function App() {
               setHistory([]);
               setSelected([]);
               setSelectedOperator(null);
-              console.log("[CLIENT] reveal swap to origin hand", { cardsCount: incoming.length, originPlayerId: payload.originPlayerId });
+              console.log("[CLIENT] reveal swap to origin hand", { cardsCount: incoming.length, originPlayerId: payload.originPlayerId, originChanged });
             }
           }
         }
@@ -2406,6 +2410,7 @@ useEffect(() => {
                     newCardsAnimatingIn ||
                     !gameStarted ||
                     isReplaying ||
+                    isPlayingRoundReplays ||
                     (players.find(p => p.playerId === socket.getSocketId()) || {}).finished ||
                     // Disable if ANY timer is active (no-solution or reveal)
                     (noSolutionTimer !== null)
