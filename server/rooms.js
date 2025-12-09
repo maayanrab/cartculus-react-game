@@ -235,10 +235,6 @@ class Rooms {
     // When solving own cards, mark as finished normally.
     if (!isNoSolutionChallenge) {
       player.finishedStatus = "solved";
-      // Record finish time if not already recorded
-      if (!room.playerFinishOrder[playerId]) {
-        room.playerFinishOrder[playerId] = Date.now();
-      }
       this.markPlayerRoundFinished(roomId, playerId);
     }
 
@@ -268,6 +264,11 @@ class Rooms {
 
     player.roundFinished = true;
     player.finishedStatus = "waiting";
+    
+    // Record finish time for replay ordering if not already recorded
+    if (!room.playerFinishOrder[playerId]) {
+      room.playerFinishOrder[playerId] = Date.now();
+    }
     
     // Log when player enters waiting state
     console.log(`${player.name || playerId} has finished (waiting for other players)`);
