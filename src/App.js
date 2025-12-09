@@ -47,6 +47,9 @@ export default function App() {
   const currentReplayHeaderRef = useRef("");
   const roundReplaysSessionIdRef = useRef(0);
   const roundReplaysDoneRef = useRef(false);
+  const isPlayingRoundReplaysRef = useRef(isPlayingRoundReplays);
+  const processDealPendingRef = useRef(null);
+  const processDealRiddleRef = useRef(null);
 
   // Multiplayer state
   const [multiplayerRoom, setMultiplayerRoom] = useState(null);
@@ -159,6 +162,30 @@ export default function App() {
     isReplayingRef.current = isReplaying;
   }, [isReplaying]);
   useEffect(() => {
+    isPlayingRoundReplaysRef.current = isPlayingRoundReplays;
+    if (!isPlayingRoundReplays) {
+      // Flush any queued server deals once showcases are done
+      if (pendingDealRef.current && processDealPendingRef.current) {
+        try {
+          const d = pendingDealRef.current;
+          pendingDealRef.current = null;
+          processDealPendingRef.current(d);
+        } catch (e) {
+          console.error("error processing queued deal_pending after replays", e);
+        }
+      }
+      if (pendingRiddleRef.current && processDealRiddleRef.current) {
+        try {
+          const r = pendingRiddleRef.current;
+          pendingRiddleRef.current = null;
+          processDealRiddleRef.current(r);
+        } catch (e) {
+          console.error("error processing queued deal_riddle after replays", e);
+        }
+      }
+    }
+  }, [isPlayingRoundReplays]);
+  useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
   useEffect(() => {
@@ -170,20 +197,21 @@ export default function App() {
   useEffect(() => {
     waitingForOthersAfterWinRef.current = waitingForOthersAfterWin;
     // If we've just cleared the waiting state, process any pending queued deals
-    if (!waitingForOthersAfterWin && pendingDealRef.current) {
+    const canProcessQueued = !waitingForOthersAfterWin && !isPlayingRoundReplaysRef.current;
+    if (canProcessQueued && pendingDealRef.current && processDealPendingRef.current) {
       try {
         const d = pendingDealRef.current;
         pendingDealRef.current = null;
-        processDealPending(d);
+        processDealPendingRef.current(d);
       } catch (e) {
         console.error('error processing queued deal_pending', e);
       }
     }
-    if (!waitingForOthersAfterWin && pendingRiddleRef.current) {
+    if (canProcessQueued && pendingRiddleRef.current && processDealRiddleRef.current) {
       try {
         const r = pendingRiddleRef.current;
         pendingRiddleRef.current = null;
-        processDealRiddle(r);
+        processDealRiddleRef.current(r);
       } catch (e) {
         console.error('error processing queued deal_riddle', e);
       }
@@ -538,6 +566,11 @@ export default function App() {
     };
 
     socket.on("deal_riddle", (data) => {
+      // If a replay showcase is running, queue the reveal until it finishes
+      if (isPlayingRoundReplaysRef.current) {
+        pendingRiddleRef.current = data;
+        return;
+      }
       // If this client is currently waiting for others after finishing, queue the reveal
       if (waitingForOthersAfterWinRef.current) {
         pendingRiddleRef.current = data;
@@ -610,8 +643,17 @@ export default function App() {
       }
     };
 
+    // Expose helpers to other effects for deferred processing
+    processDealPendingRef.current = processDealPending;
+    processDealRiddleRef.current = processDealRiddle;
+
     // When server sends a pending deal, load the cards face-down and ack when ready.
     socket.on("deal_pending", (data) => {
+      // Avoid interrupting round showcase replays; defer until they finish
+      if (isPlayingRoundReplaysRef.current) {
+        pendingDealRef.current = data;
+        return;
+      }
       processDealPending(data);
     });
 
