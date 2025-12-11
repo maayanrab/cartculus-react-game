@@ -94,9 +94,9 @@ export default function Lobby({ onJoined, fullScreen = false, initialRoomId = nu
 
           <div className="mb-2 text-center">
             <label className="form-label">Create Room</label>
-            <input className="form-control form-control-sm mb-1" placeholder="Room display name (required)" value={roomName} onChange={(e) => setRoomName(e.target.value)} />
+            <input className="form-control mb-1" placeholder="Room display name (required)" value={roomName} onChange={(e) => setRoomName(e.target.value)} />
             <div className="d-flex justify-content-center mt-2">
-              <button type="submit" className="btn btn-success btn-sm" disabled={!name || !roomName}>Create & Join</button>
+              <button type="submit" className="btn btn-success" disabled={!name || !roomName}>Create & Join</button>
             </div>
           </div>
         </form>
@@ -120,16 +120,16 @@ export default function Lobby({ onJoined, fullScreen = false, initialRoomId = nu
         <hr />
         <div className="mb-2">
           <label className="form-label">Join by room ID:</label>
-          <div className="d-flex gap-2">
+          <div className="d-flex gap-2 align-items-center">
             <input
               type="text"
-              className="form-control form-control-sm"
+              className="form-control"
               placeholder="Enter Room ID"
               value={manualRoomId}
               onChange={(e) => setManualRoomId(e.target.value)}
             />
             <button
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary"
               type="button"
               disabled={!name || !manualRoomId}
               onClick={() => join(manualRoomId)}
