@@ -35,6 +35,11 @@ function startNewRoundForRoom(roomId) {
   // Clear timer UI for all clients
   io.to(roomId).emit("no_solution_timer", null);
 
+  // Explicitly clear round replays here as well to ensure no stale data persists
+  if (room.roundReplays) {
+    room.roundReplays = [];
+  }
+
   const deal = rooms.startGame(roomId);
   const r = rooms.getRoom(roomId);
   if (!r) return;

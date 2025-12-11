@@ -603,10 +603,14 @@ class Rooms {
       // A solution belongs to this player if either:
       // 1. This player's hand was challenged and someone solved it (originPlayerId === playerId)
       // 2. This player solved their own hand (solverId === playerId && originPlayerId is null/absent)
+      // AND the solution cards match the current hand (to avoid stale replays)
       const solutionEntry = room.roundReplays.find(
         (r) => r.type === "solution" && (
           r.originPlayerId === playerId ||
           (r.solverId === playerId && !r.originPlayerId)
+        ) && (
+          !r.solution || !r.solution.c || 
+          this._areCardsMatching(r.solution.c, originHand)
         )
       );
       const noSolutionEntry = room.roundReplays.find(
@@ -646,6 +650,14 @@ class Rooms {
     replays.sort((a, b) => a.ts - b.ts);
 
     return replays;
+  }
+
+  _areCardsMatching(solutionValues, hand) {
+    if (!Array.isArray(solutionValues) || !Array.isArray(hand)) return false;
+    if (solutionValues.length !== hand.length) return false;
+    const v1 = [...solutionValues].sort((a, b) => a - b);
+    const v2 = hand.map((c) => c.value).sort((a, b) => a - b);
+    return v1.every((val, i) => val === v2[i]);
   }
 }
 
