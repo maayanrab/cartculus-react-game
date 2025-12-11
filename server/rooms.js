@@ -30,6 +30,7 @@ class Rooms {
         roundReplaysBroadcasted: false,
         replayAcks: null,
         replaysWaitTimeout: null,
+        replaysForceAdvanceTimeout: null, // NEW: force advance 8s after first person finishes replays
         playerFinishOrder: {}, // Track when each player finished (for ordering replays)
       });
     }

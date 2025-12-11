@@ -680,10 +680,37 @@ try {
       const total = room.players.size;
       const acked = room.replayAcks.size;
       console.log("[EVENT] client_replays_complete", { roomId, playerId, acked, total });
+      
+      // If this is the first person to finish, start an 8s timer to force-advance
+      // so they don't wait forever if others are slow/stuck.
+      if (acked === 1 && total > 1) {
+        if (room.replaysForceAdvanceTimeout) {
+          clearTimeout(room.replaysForceAdvanceTimeout);
+        }
+        room.replaysForceAdvanceTimeout = setTimeout(() => {
+          const rr = rooms.getRoom(roomId);
+          if (!rr) return;
+          // If we haven't already advanced (e.g. by everyone finishing), do it now
+          if (rr.roundReplaysBroadcasted) {
+            console.log("[TIMER] replays force advance (8s elapsed since first finish)", { roomId });
+            if (rr.replaysWaitTimeout) {
+              clearTimeout(rr.replaysWaitTimeout);
+              rr.replaysWaitTimeout = null;
+            }
+            rr.replaysForceAdvanceTimeout = null;
+            startNewRoundForRoom(roomId);
+          }
+        }, 8000);
+      }
+
       if (acked >= total) {
         if (room.replaysWaitTimeout) {
           clearTimeout(room.replaysWaitTimeout);
           room.replaysWaitTimeout = null;
+        }
+        if (room.replaysForceAdvanceTimeout) {
+          clearTimeout(room.replaysForceAdvanceTimeout);
+          room.replaysForceAdvanceTimeout = null;
         }
         startNewRoundForRoom(roomId);
       }
