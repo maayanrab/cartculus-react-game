@@ -60,7 +60,13 @@ export default function App() {
   const [finishedCount, setFinishedCount] = useState(0);
   const [activeCount, setActiveCount] = useState(0);
   const [noSolutionTimer, setNoSolutionTimer] = useState(null);
-  const [showMultiplayer, setShowMultiplayer] = useState(false);
+  const [showMultiplayer, setShowMultiplayer] = useState(() => {
+    try {
+      return !!new URLSearchParams(window.location.search).get("room");
+    } catch {
+      return false;
+    }
+  });
   const [waitingForOthers, setWaitingForOthers] = useState(false);
   const [pendingLoadedCount, setPendingLoadedCount] = useState(0);
   const [pendingTotalCount, setPendingTotalCount] = useState(0);
@@ -122,6 +128,14 @@ export default function App() {
       return !!params.get("solution");
     } catch {
       return false;
+    }
+  })();
+  const initialRoomId = (() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("room");
+    } catch {
+      return null;
     }
   })();
   const mySocketId = socket.getSocketId();
@@ -2199,7 +2213,7 @@ useEffect(() => {
           </h5>
 
           {/* If not yet in a room, show the full-screen Lobby; once joined, hide the creation panel and show only the room/player list */}
-          {!multiplayerRoom && <Lobby fullScreen={true} onJoined={handleJoined} />}
+          {!multiplayerRoom && <Lobby fullScreen={true} onJoined={handleJoined} initialRoomId={initialRoomId} />}
 
           {multiplayerRoom && (
             <div className="mt-3">

@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from "react";
 import * as socket from "../multiplayer/socket";
 
-export default function Lobby({ onJoined, fullScreen = false }) {
+export default function Lobby({ onJoined, fullScreen = false, initialRoomId = null }) {
   const [name, setName] = useState("");
   const [roomName, setRoomName] = useState("");
   const [rooms, setRooms] = useState([]);
+  const [manualRoomId, setManualRoomId] = useState("");
 
   useEffect(() => {
-    socket.on("rooms_list", (list) => setRooms(list || []));
-    socket.requestRooms();
-  }, []);
+    if (!initialRoomId) {
+      socket.on("rooms_list", (list) => setRooms(list || []));
+      socket.requestRooms();
+    }
+  }, [initialRoomId]);
 
   const join = (rId, rName = null) => {
     if (!name || name.trim() === "") return;
@@ -47,10 +50,38 @@ export default function Lobby({ onJoined, fullScreen = false }) {
     const handleSubmit = (e) => {
       e.preventDefault();
       // Attempt to create and join the room when Enter is pressed in either input
-      if (name && name.trim() !== "" && roomName && roomName.trim() !== "") {
+      if (initialRoomId) {
+        join(initialRoomId);
+      } else if (name && name.trim() !== "" && roomName && roomName.trim() !== "") {
         createRoom();
       }
     };
+
+    if (initialRoomId) {
+      return (
+        <>
+          <h4 className="mb-3">Join Room</h4>
+          <p className="text-muted">Room ID: <strong>{initialRoomId}</strong></p>
+          <form onSubmit={handleSubmit}>
+            <div className="mb-3">
+              <label className="form-label">Player Name</label>
+              <input
+                className="form-control"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter your name"
+                autoFocus
+              />
+            </div>
+            <div className="d-grid">
+              <button type="submit" className="btn btn-primary" disabled={!name || name.trim() === ""}>
+                Join Game
+              </button>
+            </div>
+          </form>
+        </>
+      );
+    }
 
     return (
       <>
@@ -83,6 +114,28 @@ export default function Lobby({ onJoined, fullScreen = false }) {
           </ul>
           <div className="mt-2 d-flex justify-content-center">
             <button className="btn btn-outline-secondary btn-sm" onClick={() => socket.requestRooms()}>Refresh</button>
+          </div>
+        </div>
+
+        <hr />
+        <div className="mb-2">
+          <label className="form-label">Join by room ID:</label>
+          <div className="input-group input-group-sm">
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Enter Room ID"
+              value={manualRoomId}
+              onChange={(e) => setManualRoomId(e.target.value)}
+            />
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={!name || !manualRoomId}
+              onClick={() => join(manualRoomId)}
+            >
+              Join
+            </button>
           </div>
         </div>
       </>
