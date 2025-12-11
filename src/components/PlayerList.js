@@ -30,7 +30,7 @@ export default function PlayerList({ players = [], scores = {}, hostId = null, r
     <div className="player-list p-2" style={{ width: '100%', background: 'white', borderRadius: 6 }}>
       <div className="d-flex justify-content-between align-items-center mb-2">
         <div>
-          <h6 className="mb-0">Players</h6>
+          <h6 className="mb-0">Player List</h6>
           {roomId && <small className="text-muted" style={{ fontSize: '0.8em' }}>Room ID: {roomId}</small>}
         </div>
         <div className="d-flex gap-2">

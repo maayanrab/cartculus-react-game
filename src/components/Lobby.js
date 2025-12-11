@@ -92,6 +92,8 @@ export default function Lobby({ onJoined, fullScreen = false, initialRoomId = nu
             <input className="form-control" value={name} onChange={(e) => setName(e.target.value)} placeholder="Visible by others (required)" />
           </div>
 
+          <hr />
+
           <div className="mb-2 text-center">
             <label className="form-label">Create Room</label>
             <input className="form-control mb-1" placeholder="Room display name (required)" value={roomName} onChange={(e) => setRoomName(e.target.value)} />
@@ -101,23 +103,8 @@ export default function Lobby({ onJoined, fullScreen = false, initialRoomId = nu
           </div>
         </form>
 
-        <div className="mb-2">
-          <label className="form-label">Or join existing</label>
-          <ul className="list-unstyled" style={{ maxHeight: 260, overflowY: 'auto' }}>
-            {rooms.length === 0 && <li className="text-muted">No active rooms</li>}
-            {rooms.map((r) => (
-              <li key={r.roomId} className="d-flex justify-content-between align-items-center mb-1">
-                <span>{r.roomName || "Unnamed Room"}</span>
-                <button className="btn btn-primary btn-sm" onClick={() => join(r.roomId, r.roomName)} disabled={!name}>Join</button>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-2 d-flex justify-content-center">
-            <button className="btn btn-outline-secondary btn-sm" onClick={() => socket.requestRooms()}>Refresh</button>
-          </div>
-        </div>
-
         <hr />
+
         <div className="mb-2">
           <label className="form-label">Join by room ID:</label>
           <div className="d-flex gap-2 align-items-center">
@@ -136,6 +123,22 @@ export default function Lobby({ onJoined, fullScreen = false, initialRoomId = nu
             >
               Join
             </button>
+          </div>
+        </div>
+
+        <div className="mb-2">
+          <label className="form-label">Active Game Rooms</label>
+          <ul className="list-unstyled" style={{ maxHeight: 260, overflowY: 'auto' }}>
+            {rooms.length === 0 && <li className="text-muted">No active rooms</li>}
+            {rooms.map((r) => (
+              <li key={r.roomId} className="d-flex justify-content-between align-items-center mb-1">
+                <span>{r.roomName || "Unnamed Room"}</span>
+                <button className="btn btn-primary btn-sm" onClick={() => join(r.roomId, r.roomName)} disabled={!name}>Join</button>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 d-flex justify-content-center">
+            <button className="btn btn-outline-secondary btn-sm" onClick={() => socket.requestRooms()}>Refresh</button>
           </div>
         </div>
       </>
