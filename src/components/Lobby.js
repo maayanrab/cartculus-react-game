@@ -89,7 +89,7 @@ export default function Lobby({ onJoined, fullScreen = false, initialRoomId = nu
         <form onSubmit={handleSubmit}>
           <div className="mb-2">
             <label className="form-label">Player Name</label>
-            <input className="form-control" value={name} onChange={(e) => setName(e.target.value)} placeholder="" />
+            <input className="form-control" value={name} onChange={(e) => setName(e.target.value)} placeholder="Visible by others (required)" />
           </div>
 
           <div className="mb-2 text-center">
@@ -120,16 +120,16 @@ export default function Lobby({ onJoined, fullScreen = false, initialRoomId = nu
         <hr />
         <div className="mb-2">
           <label className="form-label">Join by room ID:</label>
-          <div className="input-group input-group-sm">
+          <div className="d-flex gap-2">
             <input
               type="text"
-              className="form-control"
+              className="form-control form-control-sm"
               placeholder="Enter Room ID"
               value={manualRoomId}
               onChange={(e) => setManualRoomId(e.target.value)}
             />
             <button
-              className="btn btn-primary"
+              className="btn btn-primary btn-sm"
               type="button"
               disabled={!name || !manualRoomId}
               onClick={() => join(manualRoomId)}
