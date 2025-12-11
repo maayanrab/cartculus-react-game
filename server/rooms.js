@@ -173,6 +173,10 @@ class Rooms {
       clearTimeout(room.replaysWaitTimeout);
       room.replaysWaitTimeout = null;
     }
+    if (room.replaysForceAdvanceTimeout) {
+      clearTimeout(room.replaysForceAdvanceTimeout);
+      room.replaysForceAdvanceTimeout = null;
+    }
     return { publicDeal: { target, perPlayerHands } };
   }
 

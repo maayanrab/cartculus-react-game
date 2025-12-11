@@ -22,6 +22,12 @@ function startNewRoundForRoom(roomId) {
   const room = rooms.getRoom(roomId);
   if (!room) return;
 
+  // Prevent double-starting if a deal is already pending/loading
+  if (room.pendingDeal) {
+    console.log("[WARN] startNewRoundForRoom ignored (deal already pending)", { roomId });
+    return;
+  }
+
   // Clear any "auto next round" timer that might be hanging
   if (room.autoNextRoundTimeout) {
     clearTimeout(room.autoNextRoundTimeout);
