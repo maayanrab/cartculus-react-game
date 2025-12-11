@@ -111,6 +111,9 @@ export default function App() {
   const selectedRef = useRef(selected);
   const selectedOperatorRef = useRef(selectedOperator);
   const historyRef = useRef(history);
+  const solutionMovesRef = useRef(solutionMoves);
+  const frozenSolutionRef = useRef(frozenSolution);
+  const winEmittedRef = useRef(false);
   const isSharedRiddle = (() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -208,6 +211,16 @@ export default function App() {
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
+  useEffect(() => {
+    solutionMovesRef.current = solutionMoves;
+  }, [solutionMoves]);
+  useEffect(() => {
+    frozenSolutionRef.current = frozenSolution;
+  }, [frozenSolution]);
+  useEffect(() => {
+    // reset per-round win emission guard when cards reset to a new round
+    winEmittedRef.current = false;
+  }, [currentRoundTarget]);
   useEffect(() => {
     waitingForOthersAfterWinRef.current = waitingForOthersAfterWin;
     // If we've just cleared the waiting state, process any pending queued deals
@@ -350,10 +363,11 @@ export default function App() {
       setIsReplaying(false);
       return;
     }
+    let didRunStep = false;
     for (let i = 0; i < moves.length; i++) {
       if (sessionId !== replaySessionIdRef.current) {
         setIsReplaying(false);
-        return;
+        return didRunStep;
       }
       const step = moves[i];
       // Prefer slot-based addressing for deterministic replays
@@ -396,6 +410,7 @@ export default function App() {
       // Execute and await this merge to finish before continuing
       // eslint-disable-next-line no-await-in-loop
       await performOperationAndWait([cardA.id, cardB.id], step.op);
+      didRunStep = true;
       // Clear highlights briefly between steps
       setSelected([]);
       setSelectedOperator(null);
@@ -414,6 +429,7 @@ export default function App() {
       setReplayPendingMoves(moves);
       startNewRound(false, replayInitialCardsRef.current, replayInitialTargetRef.current);
     }
+    return didRunStep;
   };
 
   // Replay pacing configuration
@@ -1517,7 +1533,11 @@ export default function App() {
       setReplaysBanner("");
       // Pause before starting merge animations so viewer can focus on the cards
       await new Promise((r) => setTimeout(r, REPLAY_STARTUP_DELAY));
-      await replaySolution(solution.m);
+      const ran = await replaySolution(solution.m);
+      // If no steps executed (e.g., empty or invalid moves), ensure viewer sees the hand briefly
+      if (!ran) {
+        await new Promise((r) => setTimeout(r, 1200));
+      }
       await new Promise((r) => setTimeout(r, REPLAY_COMPLETION_DELAY));
     } catch (e) {
       console.error("playSolutionShowcase failed", e);
@@ -1599,7 +1619,8 @@ export default function App() {
     setNoSolutionMessageShowing(false);
     let ackEmitted = false;
     try {
-      for (const item of items) {
+      for (let idx = 0; idx < items.length; idx++) {
+        const item = items[idx];
         // If a newer session has started, abort this sequence
         if (sessionId !== roundReplaysSessionIdRef.current) break;
         try {
@@ -1634,9 +1655,18 @@ export default function App() {
         } catch (e) {
           console.error("error during round replay item", e);
         }
-        await clearShowcaseBoard();
+        // Keep the final replay's hand on screen a bit longer; clear others immediately
+        const isLast = idx === items.length - 1;
+        if (isLast) {
+          // Small grace period to ensure viewers see the final state
+          await new Promise((r) => setTimeout(r, 1200));
+        } else {
+          await clearShowcaseBoard();
+        }
       }
     } finally {
+      // Ensure board is clear at the end of the entire replays phase
+      await clearShowcaseBoard();
       setReplaysBanner("");
       currentReplayHeaderRef.current = "";
       setNoSolutionMessageShowing(false);
@@ -1765,18 +1795,7 @@ useEffect(() => {
             m: solutionMoves.slice(),
           }
         );
-        // If playing multiplayer, notify server that this player finished
-        if (multiplayerRoom) {
-          try {
-            const myId = socket.getSocketId();
-            const solutionPayload = (frozenSolution && frozenSolution.c && frozenSolution.t && Array.isArray(frozenSolution.m))
-              ? frozenSolution
-              : { c: originalCards.map((c) => c.value), t: target, m: solutionMoves.slice() };
-            socket.emitPlayMove(multiplayerRoom, myId, { type: "win", solution: solutionPayload });
-          } catch (e) {
-            console.error("emit play_move failed", e);
-          }
-        }
+        // Multiplayer emit: now handled inside performOperation at the winning merge time
         if (autoReshuffle && !isReplayingRef.current) {
           setTimeout(() => {
             // In multiplayer we no longer trigger a reshuffle locally when a single player finishes.
@@ -1981,6 +2000,22 @@ useEffect(() => {
             ]),
           }
         );
+        // In multiplayer, emit the completed solution immediately to avoid stale last-move issues
+        if (multiplayerRoom && !winEmittedRef.current) {
+          try {
+            const myId = socket.getSocketId();
+            const oc = originalCardsRef.current || originalCards;
+            const sm = solutionMovesRef.current || [];
+            const fullMoves = sm.concat([
+              { aSlot, bSlot, op: operator, aValue: cardA_Obj.value, bValue: cardB_Obj.value },
+            ]);
+            const solutionPayload = { c: oc.map((c) => c.value), t: target, m: fullMoves };
+            socket.emitPlayMove(multiplayerRoom, myId, { type: "win", solution: solutionPayload });
+            winEmittedRef.current = true;
+          } catch (e) {
+            console.error("emit play_move (inline) failed", e);
+          }
+        }
       }
     }
 

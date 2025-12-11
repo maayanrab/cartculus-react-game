@@ -624,8 +624,8 @@ class Rooms {
       let solverInfo = null;
       let noSolutionMethod = null;
 
-      if (solutionEntry) {
-        // Hand was solved
+      if (solutionEntry && Array.isArray(solutionEntry.solution?.m) && solutionEntry.solution.m.length > 0) {
+        // Hand was solved with a valid non-empty move list
         solverInfo = {
           solverId: solutionEntry.solverId,
           solution: solutionEntry.solution,
@@ -634,6 +634,11 @@ class Rooms {
       } else if (noSolutionEntry) {
         // Hand was declared no-solution (timeout, skip, or revealed)
         noSolutionMethod = noSolutionEntry.method; // "timeout", "skip", or "reveal"
+      } else if (solutionEntry) {
+        // Solution recorded but with empty/invalid moves: treat as unsolved for showcase
+        // Keep the player's hand visible without attempting move replay
+        solverInfo = null;
+        noSolutionMethod = null;
       }
 
       // Always include a valid target for the client, even for revealed hand no-solution
