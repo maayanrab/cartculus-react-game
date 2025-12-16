@@ -1014,6 +1014,7 @@ export default function App() {
     socket.on("round_replays", (data) => {
       try {
         if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
+        console.log("[CLIENT] received round_replays", JSON.stringify(data.items, null, 2));
         // Ignore duplicate broadcasts if we're already playing or have completed this round's replays
         if (isPlayingRoundReplays || roundReplaysDoneRef.current) {
           console.log("[CLIENT] round_replays ignored (already playing/done)");
