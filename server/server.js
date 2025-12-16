@@ -363,6 +363,46 @@ io.on("connection", (socket) => {
       isRevealChallenge = true;
     }
 
+    // NEW: Check if the solution uses another player's cards (even before reveal timer starts)
+    // This handles the case where a player finishes their own cards and then solves
+    // with another player's cards before the reveal timer has started.
+    if (!isRevealChallenge && room && move && move.solution && move.solution.c && room.deal && room.deal.perPlayerHands) {
+      const solutionCards = move.solution.c; // Array of card values used in solution
+      const playerHand = room.deal.perPlayerHands[playerId];
+      
+      console.log("[DEBUG] checking reveal challenge", { 
+        playerId, 
+        solutionCards,
+        playerHand: playerHand ? playerHand.map(c => c.value) : null,
+        allHands: Object.fromEntries(Object.entries(room.deal.perPlayerHands).map(([id, hand]) => [id, hand.map(c => c.value)]))
+      });
+      
+      // Check if solution cards match player's own hand
+      if (playerHand) {
+        const playerHandValues = playerHand.map(card => card.value).sort((a, b) => a - b);
+        const solutionCardsSorted = [...solutionCards].sort((a, b) => a - b);
+        const isOwnHand = JSON.stringify(playerHandValues) === JSON.stringify(solutionCardsSorted);
+        
+        console.log("[DEBUG] hand comparison", { playerHandValues, solutionCardsSorted, isOwnHand });
+        
+        // If not their own hand, check if it matches another player's hand
+        if (!isOwnHand) {
+          for (const [otherPlayerId, otherHand] of Object.entries(room.deal.perPlayerHands)) {
+            if (otherPlayerId !== playerId) {
+              const otherHandValues = otherHand.map(card => card.value).sort((a, b) => a - b);
+              console.log("[DEBUG] checking other player", { otherPlayerId, otherHandValues, match: JSON.stringify(otherHandValues) === JSON.stringify(solutionCardsSorted) });
+              if (JSON.stringify(otherHandValues) === JSON.stringify(solutionCardsSorted)) {
+                // This player is solving another player's hand
+                isRevealChallenge = true;
+                console.log("[STATE] detected reveal challenge (pre-timer)", { solver: playerId, cardOwner: otherPlayerId });
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
     const awarded = rooms.playerFinished(roomId, playerId, isNoSolutionChallenge || isRevealChallenge);
     console.log("[STATE] playerFinished", { roomId, playerId, awarded, isNoSolutionChallenge, isRevealChallenge });
 

@@ -838,6 +838,8 @@ export default function App() {
               setHistory([]);
               setSelected([]);
               setSelectedOperator(null);
+              // Reset win emission guard so player can win with revealed cards
+              winEmittedRef.current = false;
               console.log("[CLIENT] reveal swap to origin hand", { cardsCount: incoming.length, originPlayerId: payload.originPlayerId, originChanged });
             }
           }
@@ -2010,6 +2012,7 @@ useEffect(() => {
               { aSlot, bSlot, op: operator, aValue: cardA_Obj.value, bValue: cardB_Obj.value },
             ]);
             const solutionPayload = { c: oc.map((c) => c.value), t: target, m: fullMoves };
+            console.log("[CLIENT] emitting win", { solutionCards: solutionPayload.c, target: solutionPayload.t, viewingReveal: viewingRevealRef.current });
             socket.emitPlayMove(multiplayerRoom, myId, { type: "win", solution: solutionPayload });
             winEmittedRef.current = true;
           } catch (e) {
