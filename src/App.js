@@ -840,6 +840,8 @@ export default function App() {
               setSelectedOperator(null);
               // Reset win emission guard so player can win with revealed cards
               winEmittedRef.current = false;
+               // Clear solution moves so they don't carry over to the revealed hand
+               setSolutionMoves([]);
               console.log("[CLIENT] reveal swap to origin hand", { cardsCount: incoming.length, originPlayerId: payload.originPlayerId, originChanged });
             }
           }
