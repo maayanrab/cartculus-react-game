@@ -6,18 +6,37 @@ export default function Lobby({ onJoined, fullScreen = false, initialRoomId = nu
   const [roomName, setRoomName] = useState("");
   const [rooms, setRooms] = useState([]);
   const [manualRoomId, setManualRoomId] = useState("");
+  const [pendingJoinRoomId, setPendingJoinRoomId] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     if (!initialRoomId) {
       socket.on("rooms_list", (list) => setRooms(list || []));
       socket.requestRooms();
     }
-  }, [initialRoomId]);
+
+    // Handle server error when trying to join a non-existent room by ID
+    socket.on("join_error", (payload) => {
+      const msg = (payload && payload.message) || "Unable to join room";
+      setErrorMsg(msg);
+      setPendingJoinRoomId(null);
+    });
+
+    // Confirm join on first lobby_update we receive for the pending room
+    socket.on("lobby_update", () => {
+      if (pendingJoinRoomId) {
+        onJoined({ roomId: pendingJoinRoomId, playerName: name });
+        setPendingJoinRoomId(null);
+        setErrorMsg("");
+      }
+    });
+  }, [initialRoomId, pendingJoinRoomId, name]);
 
   const join = (rId, rName = null) => {
     if (!name || name.trim() === "") return;
+    setErrorMsg("");
+    setPendingJoinRoomId(rId);
     socket.joinRoom(rId, name, rName);
-    onJoined({ roomId: rId, playerName: name });
   };
 
   const createRoom = () => {
@@ -114,6 +133,14 @@ export default function Lobby({ onJoined, fullScreen = false, initialRoomId = nu
               placeholder="Enter Room ID"
               value={manualRoomId}
               onChange={(e) => setManualRoomId(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (name && name.trim() !== "" && manualRoomId && manualRoomId.trim() !== "") {
+                    join(manualRoomId);
+                  }
+                }
+              }}
             />
             <button
               className="btn btn-primary"
@@ -124,6 +151,9 @@ export default function Lobby({ onJoined, fullScreen = false, initialRoomId = nu
               Join
             </button>
           </div>
+          {errorMsg && (
+            <div className="text-danger mt-2" role="alert">{errorMsg}</div>
+          )}
         </div>
 
         <div className="mb-2">

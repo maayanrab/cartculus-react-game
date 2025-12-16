@@ -262,6 +262,17 @@ io.on("connection", (socket) => {
   });
 
   socket.on("join_room", ({ roomId, playerName, roomName }) => {
+    // Guard: prevent creating a new room when attempting to join by ID
+    // If no explicit roomName is provided, treat this as a pure join.
+    const existing = rooms.getRoom(roomId);
+    const isCreateFlow = !!roomName && roomName.trim().length > 0;
+
+    if (!existing && !isCreateFlow) {
+      console.log("[EVENT] join_room rejected (room not found)", { roomId, playerName, socketId: socket.id });
+      socket.emit("join_error", { message: "Room ID was not found" });
+      return;
+    }
+
     rooms.addPlayer(roomId, socket.id, playerName, roomName);
     socket.join(roomId);
     io.to(roomId).emit("lobby_update", rooms.getRoomPublic(roomId));
